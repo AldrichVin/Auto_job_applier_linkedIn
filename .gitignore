@@ -12,3 +12,7 @@ secrets.py
 config/personals.py
 .venv
 apikeys.py
+# User-specific config files
+config/questions.py
+config/search.py
+config/settings.py
