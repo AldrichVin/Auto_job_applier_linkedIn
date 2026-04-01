@@ -39,20 +39,25 @@ class WorkdayHandler(BasePlatformHandler):
         )
         time.sleep(2)
 
-        # May need to create account or sign in — try to find the form directly
-        # If there's a "Create Account" barrier, alert user
+        # May need to create account or sign in
         if self._check_for_account_wall():
-            print("  [!] Workday requires account creation. Alerting user...")
-            try:
-                import pyautogui
-                pyautogui.alert(
-                    f"Workday requires account creation for:\n"
-                    f"{job_info.get('title', '')} @ {job_info.get('company', '')}\n\n"
-                    f"Please create account / sign in manually, then click OK."
-                )
-            except Exception:
-                input("  Create Workday account manually, then press Enter...")
-            time.sleep(2)
+            print("  [!] Workday requires account creation. Attempting auto-login...")
+            login_email = self.data.get("login_email", self.data["email"])
+            login_password = self.data.get("login_password", "")
+            self.safe_fill(By.CSS_SELECTOR, "input[type='email'], input[data-automation-id*='email']", login_email)
+            if login_password:
+                self.safe_fill(By.CSS_SELECTOR, "input[type='password']", login_password)
+            self.safe_click(By.CSS_SELECTOR, "button[type='submit'], button[data-automation-id*='submit']", timeout=3)
+            time.sleep(3)
+
+            # Poll for account wall to clear
+            for _ in range(24):
+                time.sleep(5)
+                if not self._check_for_account_wall():
+                    print("  [+] Workday login completed.")
+                    break
+            else:
+                print("  [!] Workday login timeout.")
             self.wait_for_page_load()
 
         filled_count = 0

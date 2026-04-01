@@ -40,15 +40,15 @@ class SeekHandler(BasePlatformHandler):
             time.sleep(3)
             self.wait_for_page_load()
 
-        # Verify login
+        # Verify login — poll for up to 120s
         if "login" in self.driver.current_url.lower():
-            print("  [!] Seek login may have failed. Check for CAPTCHA or 2FA.")
-            try:
-                import pyautogui
-                pyautogui.alert("Seek login needs attention. Please complete login manually, then click OK.")
-            except Exception:
-                input("  Complete Seek login manually, then press Enter...")
-            time.sleep(2)
+            print("  [!] Seek login may need attention (CAPTCHA/2FA). Polling 120s...")
+            for _ in range(24):
+                time.sleep(5)
+                if "login" not in self.driver.current_url.lower():
+                    break
+            else:
+                print("  [!] Seek login timeout.")
 
         print("  [+] Seek: login complete.")
         return True

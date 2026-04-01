@@ -90,26 +90,20 @@ class TelusHandler(BasePlatformHandler):
         )
         time.sleep(2)
 
-        # ── Pause for user to enter OTP ─────────────────────────────
-        print("  [i] TELUS sent an OTP to your email. Enter it in the browser.")
-        try:
-            import pyautogui
-            result = pyautogui.confirm(
-                f"TELUS sent an OTP code to {login_email}.\n\n"
-                "1. Check your email for the code\n"
-                "2. Enter it in the browser\n"
-                "3. Click OK here when you're logged in",
-                "TELUS OTP - Enter Code",
-                ["OK - I'm logged in", "Skip"],
-            )
-            if result == "Skip":
-                return "manual"
-        except Exception:
-            input("  Press Enter after entering OTP and logging in...")
+        # ── Poll for OTP completion (user enters code in browser) ───
+        print(f"  [i] TELUS sent OTP to {login_email}. Enter it in browser. Polling 120s...")
+        for countdown in range(24):  # 24 * 5 = 120 seconds
+            time.sleep(5)
+            current_url = self.driver.current_url
+            if "snake" not in current_url and "login" not in current_url.lower():
+                print("  [+] TELUS: logged in successfully.")
+                return "filled"
+            remaining = 120 - (countdown + 1) * 5
+            if remaining > 0 and remaining % 30 == 0:
+                print(f"  [i] Still waiting for OTP... {remaining}s remaining")
 
-        time.sleep(2)
-        print("  [+] TELUS: login flow completed.")
-        return "filled"
+        print("  [!] TELUS OTP timeout after 120s.")
+        return "manual"
 
     def _fill_email(self, email: str) -> bool:
         """Fill the email input on the TELUS login page."""

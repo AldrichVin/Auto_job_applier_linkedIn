@@ -14,6 +14,7 @@ Usage:
 
 import argparse
 import csv
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -248,6 +249,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="List jobs without opening browser")
     parser.add_argument("--platform", type=str, default="", help="Only process jobs from this platform (e.g., greenhouse, seek)")
     parser.add_argument("--limit", type=int, default=0, help="Max number of jobs to process")
+    parser.add_argument("--auto", action="store_true", help="Non-blocking batch mode (no pauses except OTP)")
     args = parser.parse_args()
 
     # Load jobs and filter
@@ -306,6 +308,31 @@ def main():
     # Build user data
     user_data = build_user_data()
 
+    # Initialize AI client for answering unknown form questions
+    ai_client = None
+    ai_cache: dict = {}
+    ai_cache_path = Path("logs/ai_answer_cache.json")
+    if ai_cache_path.exists():
+        try:
+            with open(ai_cache_path, "r", encoding="utf-8") as f:
+                ai_cache = json.load(f)
+            print(f"[+] Loaded AI answer cache ({len(ai_cache)} entries)")
+        except Exception:
+            ai_cache = {}
+
+    try:
+        from config.secrets import use_AI, llm_api_url, llm_api_key, llm_model
+        if use_AI:
+            from openai import OpenAI
+            ai_client = OpenAI(base_url=llm_api_url, api_key=llm_api_key)
+            print(f"[+] AI client initialized (model: {llm_model})")
+        else:
+            print("[i] AI disabled in config (use_AI=False). Unknown fields will be skipped.")
+    except ImportError:
+        print("[i] AI not configured. Unknown form fields will be skipped.")
+    except Exception as exc:
+        print(f"[!] AI init failed: {exc}. Continuing without AI.")
+
     # Verify resume exists
     if not Path(RESUME_PATH).exists():
         print(f"[!] Resume not found at: {RESUME_PATH}")
@@ -336,7 +363,7 @@ def main():
             print(f"  Platform: {platform_name}")
             print(f"  URL: {url[:100]}")
 
-            handler = detect_platform(url, driver, wait, actions, user_data)
+            handler = detect_platform(url, driver, wait, actions, user_data, ai_client, ai_cache)
 
             # Login once per platform
             if platform_name not in logged_in_platforms and platform_name not in ("generic",):
@@ -385,28 +412,26 @@ def main():
                 "Screenshot Path": screenshot_path, "Error": error_msg,
             })
 
-            # Pause for user to review and submit manually
+            # In auto mode: continue immediately. Otherwise: brief pause.
             if status in ("filled", "manual"):
-                try:
-                    import pyautogui
-                    decision = pyautogui.confirm(
-                        f"Form filled for:\n\n"
-                        f"  {title} @ {company}\n"
-                        f"  Platform: {platform_name}\n\n"
-                        f"Review the form and click Submit manually.\n"
-                        f"Then click OK to continue to the next job.",
-                        "External Apply - Review & Submit",
-                        ["OK - Next Job", "Stop - End Session"],
-                    )
-                    if decision == "Stop - End Session":
-                        print("\n[i] User ended session.")
-                        break
-                except Exception:
-                    input("  Press Enter to continue to the next job...")
+                print(f"  [OK] Form ready for review. Screenshot: {screenshot_path}")
+                if not args.auto:
+                    import time
+                    time.sleep(2)  # Brief pause between jobs
 
     except KeyboardInterrupt:
         print("\n\n[i] Interrupted by user.")
     finally:
+        # Save AI answer cache
+        if ai_cache:
+            try:
+                ai_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(ai_cache_path, "w", encoding="utf-8") as f:
+                    json.dump(ai_cache, f, indent=2)
+                print(f"\n[+] AI answer cache saved ({len(ai_cache)} entries)")
+            except Exception as exc:
+                print(f"[!] Could not save AI cache: {exc}")
+
         # Print summary
         print("\n\n=== Summary ===")
         print(f"  Forms filled:     {stats['filled']}")
@@ -417,8 +442,17 @@ def main():
         print(f"  Total processed:  {total}")
         print(f"\nTracking saved to: {TRACKING_CSV}")
 
-        # Close browser
-        if driver:
+        # Wait for user to review before closing browser
+        if driver and not args.auto:
+            try:
+                input("\nPress Enter to close browser...")
+            except Exception:
+                pass
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        elif driver:
             try:
                 driver.quit()
             except Exception:

@@ -41,16 +41,17 @@ class IndeedHandler(BasePlatformHandler):
         time.sleep(3)
         self.wait_for_page_load()
 
-        # Check for CAPTCHA or 2FA
+        # Check for CAPTCHA or 2FA — poll for up to 120s
         current = self.driver.current_url.lower()
         if "auth" in current or "captcha" in current or "challenge" in current:
-            print("  [!] Indeed may need CAPTCHA or 2FA. Complete manually.")
-            try:
-                import pyautogui
-                pyautogui.alert("Indeed login needs attention. Complete login manually, then click OK.")
-            except Exception:
-                input("  Complete Indeed login manually, then press Enter...")
-            time.sleep(2)
+            print("  [!] Indeed may need CAPTCHA or 2FA. Polling 120s...")
+            for _ in range(24):
+                time.sleep(5)
+                current = self.driver.current_url.lower()
+                if not any(kw in current for kw in ["auth", "captcha", "challenge"]):
+                    break
+            else:
+                print("  [!] Indeed login timeout.")
 
         print("  [+] Indeed: login complete.")
         return True

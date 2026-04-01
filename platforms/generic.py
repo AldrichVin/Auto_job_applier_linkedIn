@@ -63,8 +63,12 @@ class GenericHandler(BasePlatformHandler):
             time.sleep(3)
             self.wait_for_page_load()
 
+        # ── Fill remaining unknown fields with AI ──────────────────
+        ai_filled = self.fill_unknown_fields(job_info)
+        total_filled += ai_filled
+
         if total_filled > 0:
-            print(f"  [+] Generic: filled {total_filled} fields.")
+            print(f"  [+] Generic: filled {total_filled} fields ({ai_filled} via AI).")
             return "filled"
 
         print(f"  [i] Generic: opened page, filled {total_filled} fields. Manual apply needed.")
@@ -105,8 +109,12 @@ class GenericHandler(BasePlatformHandler):
         # ── JS fallback: search all buttons/links by textContent ────
         try:
             clicked = self.driver.execute_script("""
-                const keywords = ['apply', 'begin', 'start application', 'start new application'];
-                const skipWords = ['login', 'sign in', 'save', 'alert', 'back'];
+                const keywords = [
+                    'apply', 'apply now', 'apply for', 'submit application',
+                    'start application', 'start new application', 'start your application',
+                    'begin', 'begin application'
+                ];
+                const skipWords = ['login', 'sign in', 'save', 'alert', 'back', 'cancel'];
                 const elements = [...document.querySelectorAll('button, a')];
                 for (const el of elements) {
                     const text = (el.textContent || el.innerText || '').trim().toLowerCase()
@@ -362,18 +370,14 @@ class GenericHandler(BasePlatformHandler):
                         # Check if OTP/verification is needed
                         page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
                         if any(kw in page_text for kw in ["verification code", "otp", "enter the code", "check your email"]):
-                            print("  [i] OTP/verification code required — waiting for user...")
-                            try:
-                                import pyautogui
-                                pyautogui.confirm(
-                                    f"A verification code was sent to {login_email}.\n\n"
-                                    "Enter the code in the browser, then click OK.",
-                                    "OTP Required",
-                                    ["OK - Done", "Skip"],
-                                )
-                            except Exception:
-                                input("  Press Enter after entering OTP...")
-                            time.sleep(2)
+                            print("  [i] OTP required — polling for 120s (enter code in browser)...")
+                            for countdown in range(24):  # 24 * 5 = 120 seconds
+                                time.sleep(5)
+                                if not self._is_login_page():
+                                    print("  [+] Login completed!")
+                                    break
+                            else:
+                                print("  [!] OTP timeout after 120s.")
                         return
             except Exception:
                 continue

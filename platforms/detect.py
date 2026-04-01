@@ -44,6 +44,8 @@ def detect_platform(
     wait: "WebDriverWait",
     actions: "ActionChains",
     user_data: dict,
+    ai_client=None,
+    ai_cache: dict | None = None,
 ) -> "BasePlatformHandler":
     """Detect which platform a URL belongs to and return the appropriate handler."""
     import importlib
@@ -54,11 +56,11 @@ def detect_platform(
             try:
                 module = importlib.import_module(module_name)
                 handler_class = getattr(module, class_name)
-                return handler_class(driver, wait, actions, user_data)
+                return handler_class(driver, wait, actions, user_data, ai_client, ai_cache)
             except (ImportError, AttributeError) as exc:
                 print(f"  [!] Handler {class_name} not yet implemented: {exc}")
                 break
 
     # Fallback to generic handler
     from platforms.generic import GenericHandler
-    return GenericHandler(driver, wait, actions, user_data)
+    return GenericHandler(driver, wait, actions, user_data, ai_client, ai_cache)
