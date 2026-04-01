@@ -135,6 +135,8 @@ def build_user_data() -> dict:
         "address_line1": "2704/58 Clarke St, Southbank",
         "preferred_contact_method": "Email",
         "referral_source": "LinkedIn",
+        "login_email": "aldrichvin05@gmail.com",
+        "login_password": "AldrichVin040205@",
     }
 
 

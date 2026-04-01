@@ -23,6 +23,9 @@ PLATFORM_PATTERNS: list[tuple[str, str, str]] = [
     ("michaelpage.com", "platforms.michaelpage", "MichaelPageHandler"),
     ("pagepersonnel.com", "platforms.michaelpage", "MichaelPageHandler"),
     ("jobs.dayforcehcm.com", "platforms.dayforce", "DayforceHandler"),
+    ("app.dataannotation.tech", "platforms.dataannotation", "DataAnnotationHandler"),
+    ("telusinternational.ai", "platforms.telus", "TelusHandler"),
+    ("jobs.telusdigital.com", "platforms.telus", "TelusHandler"),
 ]
 
 
