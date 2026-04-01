@@ -345,7 +345,7 @@ class BasePlatformHandler(ABC):
                         selector = f"#{field['id']}" if field["id"] else f"[name='{field['name']}']"
                         self.safe_fill(By.CSS_SELECTOR, selector, answer)
                     filled += 1
-                    print(f"  [AI] Filled '{label[:40]}' → '{answer[:40]}'")
+                    print(f"  [AI] Filled '{label[:40]}' -> '{answer[:40]}'")
                 except Exception:
                     pass
 

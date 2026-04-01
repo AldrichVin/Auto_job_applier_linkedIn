@@ -234,7 +234,7 @@ class AshbyHandler(BasePlatformHandler):
                 return
             el.clear()
             el.send_keys(str(value))
-            print(f"  [+] Filled '{field['label'][:40]}' → '{str(value)[:40]}'")
+            print(f"  [+] Filled '{field['label'][:40]}' -> '{str(value)[:40]}'")
         except Exception:
             pass
 
@@ -282,7 +282,7 @@ class AshbyHandler(BasePlatformHandler):
                     }
 
                     btn.click();
-                    filled.push(text.substring(0, 50) + ' → ' + answer);
+                    filled.push(text.substring(0, 50) + ' -> ' + answer);
                 }
                 return filled;
             """)

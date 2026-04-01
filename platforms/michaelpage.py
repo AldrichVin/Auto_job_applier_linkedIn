@@ -74,24 +74,20 @@ class MichaelPageHandler(BasePlatformHandler):
         time.sleep(3)
         self.wait_for_page_load()
 
-        # Fill email — target by ID first, then fallbacks
+        # Fill email — use JS to find by placeholder/label since ID varies
         login_email = self.data.get("login_email", self.data["email"])
-        filled = self.safe_fill(By.ID, "edit-mp-email", login_email, timeout=3)
-        if not filled:
-            filled = self.safe_fill(By.CSS_SELECTOR, "input[type='email']", login_email, timeout=3)
-        if not filled:
-            # Generic fallback — any text input in the email step
-            filled = self.driver.execute_script("""
-                const inputs = document.querySelectorAll('input[type="text"], input[type="email"]');
-                for (const inp of inputs) {
-                    if (inp.offsetParent === null) continue;
-                    const label = inp.getAttribute('aria-label') || inp.placeholder || '';
-                    if (label.toLowerCase().includes('email')) {
-                        inp.value = arguments[0];
-                        inp.dispatchEvent(new Event('input', {bubbles: true}));
-                        inp.dispatchEvent(new Event('change', {bubbles: true}));
-                        return true;
-                    }
+        filled = self.driver.execute_script("""
+            const inputs = document.querySelectorAll('input[type="text"], input[type="email"]');
+            for (const inp of inputs) {
+                if (inp.offsetParent === null) continue;
+                const label = inp.getAttribute('aria-label') || inp.placeholder || '';
+                if (label.toLowerCase().includes('email')) {
+                    inp.focus();
+                    inp.value = arguments[0];
+                    inp.dispatchEvent(new Event('input', {bubbles: true}));
+                    inp.dispatchEvent(new Event('change', {bubbles: true}));
+                    return true;
+                }
                 }
                 return false;
             """, login_email)
@@ -107,20 +103,34 @@ class MichaelPageHandler(BasePlatformHandler):
         """Fill personal information fields and upload CV."""
         print("  [>] Step 2: Personal information...")
 
-        # Fill fields by their actual IDs
+        # Fill fields by their actual IDs, with JS fallback by placeholder
         field_map = {
-            "edit-mp-first-name": self.data["first_name"],
-            "edit-mp-last-name": self.data["last_name"],
-            "edit-mp-phone-number": self.data["phone"],
-            "edit-postcode": self.data["postcode"],
-            "edit-city": self.data["city"],
+            "edit-mp-first-name": (self.data["first_name"], "Name"),
+            "edit-mp-last-name": (self.data["last_name"], "Surname"),
+            "edit-mp-phone-number": (self.data["phone"], "Telephone"),
+            "edit-postcode": (self.data["postcode"], "Postcode"),
+            "edit-city": (self.data["city"], "Town"),
         }
 
-        for field_id, value in field_map.items():
+        for field_id, (value, placeholder) in field_map.items():
             if not self.safe_fill(By.ID, field_id, value, timeout=3):
                 # Fallback: try by name attribute
                 name_attr = field_id.replace("edit-", "").replace("-", "_")
-                self.safe_fill(By.CSS_SELECTOR, f"input[name*='{name_attr}']", value, timeout=2)
+                if not self.safe_fill(By.CSS_SELECTOR, f"input[name*='{name_attr}']", value, timeout=2):
+                    # JS fallback: find by placeholder
+                    self.driver.execute_script("""
+                        const inputs = document.querySelectorAll('input[type="text"]');
+                        for (const inp of inputs) {
+                            if (inp.offsetParent === null) continue;
+                            if ((inp.placeholder || '').toLowerCase().includes(arguments[1].toLowerCase())) {
+                                inp.focus();
+                                inp.value = arguments[0];
+                                inp.dispatchEvent(new Event('input', {bubbles: true}));
+                                inp.dispatchEvent(new Event('change', {bubbles: true}));
+                                return;
+                            }
+                        }
+                    """, value, placeholder)
 
         # Select "No" for Aboriginal/Torres Strait Islander
         self._click_radio_by_id("edit-first-nations-no")
@@ -219,7 +229,7 @@ class MichaelPageHandler(BasePlatformHandler):
             if result == 'disabled':
                 print(f"  [!] Select2 '{element_id}' is disabled — skipping.")
                 return False
-            print(f"  [+] Select2 '{element_id}' → {value} ({result})")
+            print(f"  [+] Select2 '{element_id}' -> {value} ({result})")
             return True
         except Exception as exc:
             print(f"  [!] Select2 error '{element_id}': {exc}")
