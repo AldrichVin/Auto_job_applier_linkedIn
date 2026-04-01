@@ -16,3 +16,4 @@ apikeys.py
 config/questions.py
 config/search.py
 config/settings.py
+config/external_secrets.py
