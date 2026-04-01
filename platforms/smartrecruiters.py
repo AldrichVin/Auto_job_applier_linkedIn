@@ -282,7 +282,7 @@ class SmartRecruitersHandler(BasePlatformHandler):
             print(f"  [!] Resume upload error: {exc}")
 
     def _highlight_action_button(self) -> None:
-        """Highlight Next/Submit button without clicking."""
+        """Highlight the Next/Submit button (user clicks manually)."""
         self.driver.execute_script("""
             const btns = document.querySelectorAll('button, input[type="submit"]');
             for (const btn of btns) {
@@ -295,4 +295,4 @@ class SmartRecruitersHandler(BasePlatformHandler):
                 }
             }
         """)
-        print("  [+] Action button highlighted (NOT clicking).")
+        print("  [+] Action button highlighted — ready for you to click.")

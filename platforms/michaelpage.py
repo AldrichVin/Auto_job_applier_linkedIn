@@ -39,7 +39,7 @@ class MichaelPageHandler(BasePlatformHandler):
             self.take_screenshot("michaelpage", "error")
             return "error"
 
-        # Highlight submit button without clicking
+        # Highlight submit (user clicks manually)
         self.highlight_submit_button(
             By.CSS_SELECTOR,
             "input#edit-submit, button.mp-job-apply-final-submit-loader",

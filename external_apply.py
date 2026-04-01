@@ -416,15 +416,36 @@ def main():
                 "Screenshot Path": screenshot_path, "Error": error_msg,
             })
 
-            # Pause for user review before moving to next job
+            # Popup for user review — blocks until user clicks OK
             if status in ("filled", "manual"):
                 print(f"  [OK] Form ready. Screenshot: {screenshot_path}")
-                if not args.auto:
-                    print("  >>> Review the form. Submit manually if it looks good.")
+                print("  >>> Review the form in the browser. Submit if it looks good.")
+                print("  >>> Click OK in the popup to move to the next job.")
+                try:
+                    import tkinter as tk
+                    from tkinter import messagebox
+                    root = tk.Tk()
+                    root.withdraw()
+                    root.attributes('-topmost', True)
+                    result = messagebox.askquestion(
+                        f"Job {i}/{len(jobs)} — {title[:50]}",
+                        f"Form filled for:\n{title}\n@ {company}\n\n"
+                        f"Platform: {platform_name}\n"
+                        f"Status: {status}\n\n"
+                        "Review the browser and submit manually if it looks good.\n\n"
+                        "Click YES to continue to next job.\n"
+                        "Click NO to stop.",
+                        icon='info',
+                    )
+                    root.destroy()
+                    if result == 'no':
+                        print("  [i] Stopping at user request.")
+                        break
+                except Exception:
+                    # Fallback if tkinter not available
                     try:
-                        user_input = input("  >>> Press Enter to continue to next job (or 's' to stop): ")
+                        user_input = input("  >>> Press Enter for next job, 's' to stop: ")
                         if user_input.strip().lower() == 's':
-                            print("  [i] Stopping at user request.")
                             break
                     except EOFError:
                         pass

@@ -59,7 +59,7 @@ class BasePlatformHandler(ABC):
     def apply(self, url: str, job_info: dict) -> str:
         """Navigate to URL, fill form fields, return status string.
 
-        Must NOT click the submit/apply button.
+        Fill form fields. Does NOT click submit — user submits manually.
         Returns: 'filled', 'error', 'skipped', or 'manual'.
         """
 
@@ -173,7 +173,7 @@ class BasePlatformHandler(ABC):
         )
 
     def highlight_submit_button(self, by: str, locator: str, timeout: int = 5) -> bool:
-        """Find the submit button and highlight it visually WITHOUT clicking."""
+        """Find the submit button and highlight it visually (does NOT click)."""
         try:
             element = WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((by, locator))
@@ -184,6 +184,7 @@ class BasePlatformHandler(ABC):
                 "arguments[0].style.boxShadow = '0 0 15px red';",
                 element,
             )
+            print("  [+] Submit button highlighted in red — ready for you to click.")
             return True
         except (NoSuchElementException, TimeoutException):
             return False

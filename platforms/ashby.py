@@ -70,22 +70,23 @@ class AshbyHandler(BasePlatformHandler):
         # ── Custom fields ──────────────────────────────────────────
         filled_count += self._fill_custom_fields(job_info)
 
-        # ── Highlight submit (do NOT click) ────────────────────────
-        self.highlight_submit_button(
+        # ── Highlight submit (user clicks manually) ─────────────────
+        if not self.highlight_submit_button(
             By.CSS_SELECTOR,
             "button[class*='submit'], button:has(> span)",
-        )
-        # Fallback: find by text
-        self.driver.execute_script("""
-            const btns = document.querySelectorAll('button');
-            for (const btn of btns) {
-                if (btn.textContent.trim().toLowerCase().includes('submit application')) {
-                    btn.style.border = '4px solid red';
-                    btn.style.boxShadow = '0 0 15px red';
-                    break;
+        ):
+            # Fallback: highlight by text
+            self.driver.execute_script("""
+                const btns = document.querySelectorAll('button');
+                for (const btn of btns) {
+                    if (btn.textContent.trim().toLowerCase().includes('submit application')) {
+                        btn.style.border = '4px solid red';
+                        btn.style.boxShadow = '0 0 15px red';
+                        btn.scrollIntoView({block: 'center'});
+                        break;
+                    }
                 }
-            }
-        """)
+            """)
 
         self.take_screenshot("ashby", "filled")
         print(f"  [+] Ashby: filled {filled_count} fields.")
