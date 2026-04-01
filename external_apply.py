@@ -31,6 +31,45 @@ from config.questions import (
 )
 from platforms.detect import detect_platform, detect_platform_name
 
+def _create_chrome_session():
+    """Create a clean Chrome session independent of the LinkedIn bot."""
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    options = Options()
+    options.add_argument("--disable-extensions")
+    options.add_argument("--start-maximized")
+    # Use a temp profile to avoid conflicts with existing Chrome sessions
+    temp_profile = Path.home() / ".external_apply_chrome_profile"
+    options.add_argument(f"--user-data-dir={temp_profile}")
+
+    try:
+        driver = webdriver.Chrome(options=options)
+        driver.maximize_window()
+        wait = WebDriverWait(driver, 10)
+        actions = ActionChains(driver)
+        print("[+] Chrome session created.")
+        return driver, wait, actions
+    except Exception as exc:
+        print(f"[!] Chrome error: {exc}")
+        # Retry without custom profile
+        try:
+            options2 = Options()
+            options2.add_argument("--disable-extensions")
+            options2.add_argument("--start-maximized")
+            driver = webdriver.Chrome(options=options2)
+            driver.maximize_window()
+            wait = WebDriverWait(driver, 10)
+            actions = ActionChains(driver)
+            print("[+] Chrome session created (guest profile).")
+            return driver, wait, actions
+        except Exception as exc2:
+            print(f"[!] Chrome retry failed: {exc2}")
+            return None, None, None
+
+
 # ── Constants ───────────────────────────────────────────────────────────
 
 SOURCE_CSV = Path("all excels/all_applied_applications_history.csv")
@@ -52,7 +91,7 @@ def build_user_data() -> dict:
         "last_name": last_name,
         "full_name": full_name,
         "email": "aldrichvin040205@gmail.com",
-        "phone": phone_number,
+        "phone": "+61" + phone_number.lstrip("0") if not phone_number.startswith("+") else phone_number,
         "city": current_city,
         "state": state,
         "zipcode": zipcode,
@@ -79,7 +118,61 @@ def build_user_data() -> dict:
         "confidence_level": confidence_level,
         "education_degree": "Bachelor of Computer Science",
         "education_university": "Monash University",
+        "github": "https://github.com/AldrichVin",
     }
+
+
+def generate_cover_letter(job_info: dict, user_data: dict) -> str:
+    """Generate a tailored cover letter based on job title, company, and description.
+
+    Falls back to the default cover letter from config if no match.
+    """
+    title = job_info.get("title", "").lower()
+    company = job_info.get("company", "").lower()
+
+    # Check for gaming / product analyst roles
+    is_gaming = any(kw in company for kw in ["tripledot", "game", "gaming", "zynga", "supercell", "king", "playdots", "rovio"])
+    is_product = "product" in title
+
+    if is_gaming or is_product:
+        return _gaming_product_analyst_letter(job_info, user_data)
+
+    # Default: return the standard cover letter
+    return user_data["cover_letter"]
+
+
+def _gaming_product_analyst_letter(job_info: dict, user_data: dict) -> str:
+    company_name = job_info.get("company", "your company").strip()
+    role_title = job_info.get("title", "Product Analyst").strip()
+    return f"""Dear Hiring Team at {company_name},
+
+I am writing to express my strong interest in the {role_title} position. As a final-year Computer Science student at Monash University (GPA: 3.81/4.0) with hands-on experience in data analysis, I am drawn to the opportunity to apply analytical thinking to player behavior and product decisions in mobile gaming.
+
+During my internship as a Data Analyst at Veve Clothing, I built interactive Power BI dashboards tracking revenue trends and customer demographics, developed ETL pipelines consolidating data from multiple sources, and presented data-driven recommendations to stakeholders that increased social media engagement by 25%. This experience taught me to translate complex data into actionable insights — a skill directly applicable to optimizing game KPIs and player experiences.
+
+My academic projects demonstrate the technical depth this role requires:
+
+- NBA Player Ranking System: Built a statistical modeling pipeline analyzing player performance metrics (scoring, efficiency, consistency) using MongoDB, Flask, and Docker. This mirrors the player behavior segmentation and engagement analysis central to product analytics in gaming — identifying patterns, building meaningful segments, and ranking by composite metrics.
+
+- MonEquip Data Warehousing: Designed a star schema data warehouse with interactive Power BI dashboards using advanced SQL (CTEs, window functions, stored procedures). Conducted pre/post analysis on equipment utilization trends — directly analogous to measuring the impact of product changes and A/B tests.
+
+- Australia Weather Visualization: Built an end-to-end ETL pipeline processing 10+ years of data with geospatial visualizations, demonstrating my ability to work with large-scale datasets and create compelling visual narratives.
+
+- DataPraktis: Developed a full-stack marketplace (Next.js, PostgreSQL, TypeScript) connecting SMBs with data analysts, giving me product-side experience in user journey design and understanding how data drives feature decisions.
+
+I am proficient in SQL, Python, R, Power BI, and Excel, with experience in statistical analysis, data visualization, and A/B testing concepts. I am particularly excited about the opportunity to analyze player engagement, monetization, and retention patterns — the analytical challenge of understanding what makes players love a game deeply resonates with me.
+
+I hold a Temporary Graduate Visa (subclass 485) with full working rights in Australia until March 2028 and am available to start immediately.
+
+Portfolio: {user_data['website']}
+LinkedIn: {user_data['linkedin']}
+GitHub: {user_data['github']}
+
+I would welcome the opportunity to discuss how my analytical skills and passion for data-driven decision-making align with {company_name}'s mission.
+
+Best regards,
+Aldrich Vincent Liem
+{user_data['phone']} | {user_data['email']}"""
 
 
 # ── CSV helpers ─────────────────────────────────────────────────────────
@@ -183,13 +276,10 @@ def main():
         print("    Please update RESUME_PATH in external_apply.py")
         sys.exit(1)
 
-    # Create Chrome session
-    from modules.open_chrome import createChromeSession
-    driver, wait, actions = None, None, None
-    try:
-        driver, wait, actions = createChromeSession()
-    except Exception as exc:
-        print(f"[!] Failed to create Chrome session: {exc}")
+    # Create a clean Chrome session (separate from LinkedIn bot)
+    driver, wait, actions = _create_chrome_session()
+    if not driver:
+        print("[!] Failed to create Chrome session.")
         sys.exit(1)
 
     # Track stats
@@ -230,6 +320,9 @@ def main():
                 except Exception as exc:
                     print(f"  [!] Login error for {platform_name}: {exc}")
                     logged_in_platforms.add(platform_name)  # Don't retry login
+
+            # Generate tailored cover letter for this job
+            job["cover_letter"] = generate_cover_letter(job, user_data)
 
             # Apply (fill form)
             screenshot_path = ""
