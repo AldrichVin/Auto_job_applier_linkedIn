@@ -53,12 +53,13 @@ class TelusHandler(BasePlatformHandler):
                 timeout=3,
             )
         if not clicked:
-            # Try JS fallback
+            # Try JS fallback — only match specific button/link text
             clicked = self.driver.execute_script("""
                 const els = document.querySelectorAll('button, a');
                 for (const el of els) {
                     const text = el.textContent.trim().toLowerCase();
-                    if (text.includes('log in') || text.includes('apply')) {
+                    if (text === 'log in to apply' || text === 'log in / sign up'
+                        || text === 'log in' || text === 'sign up') {
                         el.click();
                         return true;
                     }
@@ -71,6 +72,12 @@ class TelusHandler(BasePlatformHandler):
 
         self.wait_for_page_load()
         time.sleep(3)
+
+        # ── Verify we're on the login page ──────────────────────────
+        current_url = self.driver.current_url.lower()
+        if "snake" not in current_url and "login" not in current_url:
+            print("  [!] Did not navigate to login page.")
+            return "error"
 
         # ── Fill email on login page ────────────────────────────────
         login_email = self.data.get("login_email", self.data["email"])
