@@ -23,13 +23,25 @@ class DayforceHandler(BasePlatformHandler):
 
         # ── Dismiss cookie consent popup ────────────────────────────
         self._dismiss_cookie_consent()
+        time.sleep(2)
 
         # ── Click the "Apply for ..." button ────────────────────────
+        # Use normalize-space(.) to match text across child elements
         applied = self.safe_click(
             By.XPATH,
-            "//button[contains(text(),'Apply for')]",
-            timeout=10,
+            "//button[contains(normalize-space(.),'Apply for')]",
+            timeout=15,
         )
+        if not applied:
+            # Fallback: try via JS (handles text split across child elements)
+            applied = self._click_apply_button_js()
+        if not applied:
+            # Fallback: try CSS selector
+            applied = self.safe_click(
+                By.CSS_SELECTOR,
+                "button[class*='apply'], button[data-testid*='apply']",
+                timeout=5,
+            )
         if not applied:
             print("  [!] Could not find 'Apply for' button.")
             return "error"
@@ -50,11 +62,12 @@ class DayforceHandler(BasePlatformHandler):
         self.wait_for_page_load()
         time.sleep(3)
 
-        # ── Step 1: Candidate info ──────────────────────────────────
-        filled_count = self._fill_candidate_info()
-
-        # ── Resume upload ───────────────────────────────────────────
+        # ── Resume upload first (may auto-parse and overwrite fields) ─
         resume_uploaded = self._upload_resume()
+
+        # ── Step 1: Candidate info (fill/re-fill after resume parse) ─
+        time.sleep(2)
+        filled_count = self._fill_candidate_info()
         if resume_uploaded:
             filled_count += 1
 
@@ -81,22 +94,65 @@ class DayforceHandler(BasePlatformHandler):
 
     # ── Private helpers ─────────────────────────────────────────────
 
+    def _click_apply_button_js(self) -> bool:
+        """Click the Apply button via JS — handles text split across child elements."""
+        try:
+            clicked = self.driver.execute_script("""
+                const buttons = document.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = btn.textContent.trim();
+                    if (text.includes('Apply for') || text === 'Apply') {
+                        btn.scrollIntoView({block: 'center'});
+                        btn.click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
+            if clicked:
+                print("  [+] Clicked 'Apply for' button via JS.")
+            return bool(clicked)
+        except Exception as exc:
+            print(f"  [!] JS Apply button click error: {exc}")
+            return False
+
     def _dismiss_cookie_consent(self) -> None:
         """Accept cookie consent popup if present."""
+        # Wait for popup to render
+        time.sleep(3)
         try:
-            accept_btn = WebDriverWait(self.driver, 5).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    "//button[contains(text(),'Accept') or contains(text(),'accept') "
-                    "or contains(text(),'OK') or contains(text(),'Got it') "
-                    "or contains(text(),'Agree')]",
-                ))
-            )
-            accept_btn.click()
-            print("  [+] Dismissed cookie consent popup.")
-            time.sleep(1)
+            # Try clicking via JS to bypass any overlay issues
+            dismissed = self.driver.execute_script("""
+                const buttons = document.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = btn.textContent.trim();
+                    if (text === 'Accept' || text === 'Okay, Got it' || text === 'Accept All') {
+                        btn.click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
+            if dismissed:
+                print("  [+] Dismissed cookie consent popup.")
+                time.sleep(1)
+                return
+
+            # Fallback: try XPath
+            for xpath in [
+                "//button[text()='Accept']",
+                "//button[contains(text(),'Accept')]",
+                "//button[contains(text(),'OK')]",
+            ]:
+                buttons = self.driver.find_elements(By.XPATH, xpath)
+                for btn in buttons:
+                    if btn.is_displayed():
+                        btn.click()
+                        print("  [+] Dismissed cookie consent popup.")
+                        time.sleep(1)
+                        return
         except Exception:
-            pass  # No cookie banner — that's fine
+            pass
 
     def _fill_candidate_info(self) -> int:
         """Fill all fields on the candidate info step. Returns count of filled fields."""
