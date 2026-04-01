@@ -138,6 +138,10 @@ def build_user_data() -> dict:
         "referral_source": "LinkedIn",
         "login_email": "aldrichvin05@gmail.com",
         "login_password": "AldrichVin040205@",
+        "date_of_birth": "02/04/2005",
+        "country_of_birth": "Indonesia",
+        "years_in_country": "5 - 10 years",
+        "education_level": "Bachelor's Degree",
     }
 
 
@@ -412,12 +416,20 @@ def main():
                 "Screenshot Path": screenshot_path, "Error": error_msg,
             })
 
-            # In auto mode: continue immediately. Otherwise: brief pause.
+            # Pause for user review before moving to next job
             if status in ("filled", "manual"):
-                print(f"  [OK] Form ready for review. Screenshot: {screenshot_path}")
+                print(f"  [OK] Form ready. Screenshot: {screenshot_path}")
                 if not args.auto:
-                    import time
-                    time.sleep(2)  # Brief pause between jobs
+                    print("  >>> Review the form. Submit manually if it looks good.")
+                    try:
+                        user_input = input("  >>> Press Enter to continue to next job (or 's' to stop): ")
+                        if user_input.strip().lower() == 's':
+                            print("  [i] Stopping at user request.")
+                            break
+                    except EOFError:
+                        pass
+            import time
+            time.sleep(2)  # Brief pause between jobs
 
     except KeyboardInterrupt:
         print("\n\n[i] Interrupted by user.")
