@@ -104,6 +104,21 @@ class GenericHandler(BasePlatformHandler):
         # Website / portfolio
         filled += self._try_fill_input(["website", "portfolio", "url"], self.data["website"])
 
+        # Resume upload
+        try:
+            file_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='file']")
+            for fi in file_inputs:
+                try:
+                    fi.send_keys(self.data["resume_path"])
+                    filled += 1
+                    print("  [+] Uploaded resume to file input.")
+                    time.sleep(2)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
         return filled
 
     def _try_fill_input(self, keywords: list[str], value: str) -> int:
