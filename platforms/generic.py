@@ -43,6 +43,13 @@ class GenericHandler(BasePlatformHandler):
                 self.wait_for_page_load()
                 time.sleep(2)
 
+        # ── Handle login/signup if needed ──────────────────────────
+        if self._is_login_page():
+            print("  [i] Login/signup page detected — attempting auto-login...")
+            self._handle_login_signup()
+            time.sleep(3)
+            self.wait_for_page_load()
+
         # ── Try to fill any visible form fields (multi-step) ────────
 
         total_filled = 0
@@ -246,6 +253,106 @@ class GenericHandler(BasePlatformHandler):
                 continue
 
         return False
+
+    def _is_login_page(self) -> bool:
+        """Check if the current page is a login or signup form."""
+        try:
+            page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
+            login_phrases = [
+                "sign in", "log in", "login", "sign up", "signup",
+                "create an account", "create account", "register",
+            ]
+            # Must also have an email/password input
+            has_email_input = bool(self.driver.find_elements(
+                By.CSS_SELECTOR,
+                "input[type='email'], input[name*='email' i], input[placeholder*='email' i]"
+            ))
+            has_password_input = bool(self.driver.find_elements(
+                By.CSS_SELECTOR, "input[type='password']"
+            ))
+            return (has_email_input or has_password_input) and any(p in page_text for p in login_phrases)
+        except Exception:
+            return False
+
+    def _handle_login_signup(self) -> None:
+        """Attempt to fill login/signup forms with stored credentials."""
+        login_email = self.data.get("login_email", self.data["email"])
+        login_password = self.data.get("login_password", "")
+
+        # Fill email
+        for selector in [
+            (By.CSS_SELECTOR, "input[type='email']"),
+            (By.CSS_SELECTOR, "input[name*='email' i]"),
+            (By.CSS_SELECTOR, "input[placeholder*='email' i]"),
+            (By.XPATH, "//label[contains(translate(text(),'EMAIL','email'),'email')]/..//input"),
+        ]:
+            try:
+                elements = self.driver.find_elements(selector[0], selector[1])
+                for el in elements:
+                    if el.is_displayed():
+                        el.clear()
+                        el.send_keys(login_email)
+                        print(f"  [+] Filled login email: {login_email}")
+                        break
+            except Exception:
+                continue
+
+        # Fill password if field exists
+        if login_password:
+            try:
+                pw_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']")
+                for pw in pw_inputs:
+                    if pw.is_displayed():
+                        pw.clear()
+                        pw.send_keys(login_password)
+                        print("  [+] Filled login password.")
+                        break
+            except Exception:
+                pass
+
+        # Fill first/last name if signup form
+        self._try_fill_input(["first.?name", "fname", "given.?name"], self.data["first_name"])
+        self._try_fill_input(["last.?name", "lname", "surname", "family.?name"], self.data["last_name"])
+
+        time.sleep(1)
+
+        # Click submit/login/signup/continue button
+        for xpath in [
+            "//button[contains(translate(text(),'SIGN','sign'),'sign up')]",
+            "//button[contains(translate(text(),'SIGN','sign'),'sign in')]",
+            "//button[contains(translate(text(),'LOG','log'),'log in')]",
+            "//button[contains(translate(text(),'CREATE','create'),'create')]",
+            "//button[contains(translate(text(),'REGISTER','register'),'register')]",
+            "//button[contains(translate(text(),'CONTINUE','continue'),'continue')]",
+            "//button[contains(translate(text(),'SUBMIT','submit'),'submit')]",
+            "//input[@type='submit']",
+        ]:
+            try:
+                buttons = self.driver.find_elements(By.XPATH, xpath)
+                for btn in buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        btn.click()
+                        print(f"  [+] Clicked login/signup button: '{btn.text.strip()[:40]}'")
+                        time.sleep(3)
+
+                        # Check if OTP/verification is needed
+                        page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
+                        if any(kw in page_text for kw in ["verification code", "otp", "enter the code", "check your email"]):
+                            print("  [i] OTP/verification code required — waiting for user...")
+                            try:
+                                import pyautogui
+                                pyautogui.confirm(
+                                    f"A verification code was sent to {login_email}.\n\n"
+                                    "Enter the code in the browser, then click OK.",
+                                    "OTP Required",
+                                    ["OK - Done", "Skip"],
+                                )
+                            except Exception:
+                                input("  Press Enter after entering OTP...")
+                            time.sleep(2)
+                        return
+            except Exception:
+                continue
 
     def _is_job_closed(self) -> bool:
         """Check if the page indicates the job listing is closed or expired."""
