@@ -119,6 +119,11 @@ class GenericHandler(BasePlatformHandler):
         except Exception:
             pass
 
+        # Cover letter textarea
+        cover_text = job_info.get("cover_letter") or self.data["cover_letter"]
+        if cover_text:
+            filled += self._try_fill_textarea(["cover", "letter", "message", "additional"], cover_text)
+
         return filled
 
     def _try_fill_input(self, keywords: list[str], value: str) -> int:
@@ -156,4 +161,32 @@ class GenericHandler(BasePlatformHandler):
                         return 1
             except Exception:
                 continue
+        return 0
+
+    def _try_fill_textarea(self, keywords: list[str], value: str) -> int:
+        """Try to fill a textarea matching any keyword. Returns 1 if filled."""
+        import re
+        for kw in keywords:
+            try:
+                for attr in ["name", "id", "placeholder", "aria-label"]:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, f"textarea[{attr}]")
+                    for el in elements:
+                        attr_val = (el.get_attribute(attr) or "").lower()
+                        if re.search(kw, attr_val) and el.is_displayed():
+                            el.clear()
+                            el.send_keys(value)
+                            return 1
+            except Exception:
+                continue
+
+        # Fallback: try any visible textarea
+        try:
+            textareas = self.driver.find_elements(By.CSS_SELECTOR, "textarea")
+            for ta in textareas:
+                if ta.is_displayed() and not ta.get_attribute("readonly"):
+                    ta.clear()
+                    ta.send_keys(value)
+                    return 1
+        except Exception:
+            pass
         return 0
