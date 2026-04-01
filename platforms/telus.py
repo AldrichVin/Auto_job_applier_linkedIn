@@ -25,7 +25,7 @@ class TelusHandler(BasePlatformHandler):
         # ── Check for 404 ──────────────────────────────────────────
         try:
             page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
-            if "page cannot be found" in page_text or "404" in self.driver.title:
+            if "page cannot be found" in page_text or "404" in self.driver.title or "not found" in page_text:
                 print("  [!] Page not found (404).")
                 return "error"
         except Exception:
@@ -43,7 +43,7 @@ class TelusHandler(BasePlatformHandler):
         clicked = self.safe_click(
             By.XPATH,
             "//button[contains(text(),'Log in to apply')]",
-            timeout=5,
+            timeout=10,
         )
         if not clicked:
             # Try the nav link
@@ -86,7 +86,7 @@ class TelusHandler(BasePlatformHandler):
         self.safe_click(
             By.XPATH,
             "//button[contains(text(),'Continue')]",
-            timeout=5,
+            timeout=10,
         )
         time.sleep(2)
 
