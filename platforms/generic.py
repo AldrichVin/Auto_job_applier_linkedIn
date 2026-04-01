@@ -25,6 +25,11 @@ class GenericHandler(BasePlatformHandler):
         self.wait_for_page_load()
         time.sleep(2)
 
+        # ── Check for expired/closed listings ──────────────────────
+        if self._is_job_closed():
+            print("  [!] Job listing appears closed/expired.")
+            return "error"
+
         # ── Try to click Apply button ───────────────────────────────
 
         apply_clicked = self._click_apply_button()
@@ -65,6 +70,10 @@ class GenericHandler(BasePlatformHandler):
             (By.XPATH, "//button[contains(translate(text(),'APPLY','apply'),'apply')]"),
             (By.XPATH, "//a[contains(translate(text(),'APPLY','apply'),'apply for')]"),
             (By.XPATH, "//button[contains(translate(text(),'APPLY','apply'),'apply for')]"),
+            (By.XPATH, "//a[contains(translate(text(),'START','start'),'start new application')]"),
+            (By.XPATH, "//button[contains(translate(text(),'START','start'),'start new application')]"),
+            (By.XPATH, "//a[contains(translate(text(),'BEGIN','begin'),'begin')]"),
+            (By.XPATH, "//button[contains(translate(text(),'BEGIN','begin'),'begin')]"),
             (By.CSS_SELECTOR, "a[href*='apply'], a[class*='apply'], button[class*='apply']"),
             (By.CSS_SELECTOR, "a[data-action*='apply'], button[data-action*='apply']"),
             (By.CSS_SELECTOR, ".apply-btn, .btn-apply, .apply-button, .job-apply"),
@@ -237,3 +246,21 @@ class GenericHandler(BasePlatformHandler):
                 continue
 
         return False
+
+    def _is_job_closed(self) -> bool:
+        """Check if the page indicates the job listing is closed or expired."""
+        try:
+            page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
+            closed_phrases = [
+                "applications for this job have closed",
+                "this job is no longer available",
+                "this position has been filled",
+                "job has expired",
+                "listing has expired",
+                "no longer accepting applications",
+                "this vacancy has closed",
+                "role has been filled",
+            ]
+            return any(phrase in page_text for phrase in closed_phrases)
+        except Exception:
+            return False
