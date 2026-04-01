@@ -391,16 +391,27 @@ def main():
             # Generate tailored cover letter for this job
             job["cover_letter"] = generate_cover_letter(job, user_data)
 
-            # Apply (fill form)
+            # Apply (fill form) — recover from Chrome crashes
             screenshot_path = ""
             error_msg = ""
             try:
                 status = handler.apply(url, job)
                 screenshot_path = handler.take_screenshot(job_id)
             except Exception as exc:
-                status = "error"
                 error_msg = str(exc)[:500]
-                print(f"  [!] Error: {exc}")
+                if "invalid session id" in str(exc).lower():
+                    print("  [!] Chrome crashed — restarting session...")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver, wait, actions = _create_chrome_session()
+                    logged_in_platforms.clear()
+                    status = "error"
+                    error_msg = "Chrome session crashed, restarted"
+                else:
+                    status = "error"
+                    print(f"  [!] Error: {exc}")
                 try:
                     screenshot_path = handler.take_screenshot(job_id, "error")
                 except Exception:
