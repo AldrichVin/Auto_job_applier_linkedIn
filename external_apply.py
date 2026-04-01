@@ -255,6 +255,24 @@ def main():
 
     jobs = [j for j in all_jobs if j["job_id"] not in processed_ids]
 
+    # Deduplicate by URL (keep first occurrence)
+    seen_urls: set[str] = set()
+    unique_jobs: list[dict] = []
+    for j in jobs:
+        url_key = j["external_url"].split("?")[0]  # Strip query params for dedup
+        if url_key not in seen_urls:
+            seen_urls.add(url_key)
+            unique_jobs.append(j)
+        else:
+            # Auto-mark duplicates as skipped
+            save_tracking_record(TRACKING_CSV, {
+                "Job ID": j["job_id"], "Title": j["title"], "Company": j["company"],
+                "External URL": j["external_url"], "Platform": detect_platform_name(j["external_url"]),
+                "Status": "skipped", "Timestamp": datetime.now().isoformat(),
+                "Screenshot Path": "", "Error": "Duplicate URL",
+            })
+    jobs = unique_jobs
+
     if args.platform:
         jobs = [
             j for j in jobs
