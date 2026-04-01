@@ -38,15 +38,24 @@ class GenericHandler(BasePlatformHandler):
                 self.wait_for_page_load()
                 time.sleep(2)
 
-        # ── Try to fill any visible form fields ─────────────────────
+        # ── Try to fill any visible form fields (multi-step) ────────
 
-        filled = self._try_fill_form(job_info)
+        total_filled = 0
+        for step in range(5):  # up to 5 form steps
+            filled = self._try_fill_form(job_info)
+            total_filled += filled
 
-        if filled > 0:
-            print(f"  [+] Generic: filled {filled} fields.")
+            # Try clicking Next / Continue button to advance
+            if not self._click_next_button():
+                break
+            time.sleep(3)
+            self.wait_for_page_load()
+
+        if total_filled > 0:
+            print(f"  [+] Generic: filled {total_filled} fields.")
             return "filled"
 
-        print(f"  [i] Generic: opened page, filled {filled} fields. Manual apply needed.")
+        print(f"  [i] Generic: opened page, filled {total_filled} fields. Manual apply needed.")
         return "manual"
 
     def _click_apply_button(self) -> bool:
@@ -96,7 +105,16 @@ class GenericHandler(BasePlatformHandler):
         filled += self._try_fill_input(["phone", "mobile", "tel", "contact.?number"], self.data["phone"])
 
         # Location
-        filled += self._try_fill_input(["city", "location", "suburb"], self.data["city"])
+        filled += self._try_fill_input(["city", "location", "suburb", "town"], self.data["city"])
+
+        # Postcode
+        filled += self._try_fill_input(["post.?code", "zip.?code", "postal"], self.data["postcode"])
+
+        # Address
+        filled += self._try_fill_input(["address", "street"], self.data["address_line1"])
+
+        # Current job title
+        filled += self._try_fill_input(["job.?title", "current.?title", "position.?title"], self.data["current_job_title"])
 
         # LinkedIn
         filled += self._try_fill_input(["linkedin"], self.data["linkedin"])
@@ -190,3 +208,32 @@ class GenericHandler(BasePlatformHandler):
         except Exception:
             pass
         return 0
+
+    def _click_next_button(self) -> bool:
+        """Try clicking Next / Continue / Proceed buttons to advance multi-step forms."""
+        next_selectors = [
+            (By.XPATH, "//button[contains(translate(text(),'NEXT','next'),'next')]"),
+            (By.XPATH, "//button[contains(translate(text(),'CONTINUE','continue'),'continue')]"),
+            (By.XPATH, "//a[contains(translate(text(),'NEXT','next'),'next')]"),
+            (By.XPATH, "//a[contains(translate(text(),'CONTINUE','continue'),'continue')]"),
+            (By.XPATH, "//button[contains(translate(text(),'PROCEED','proceed'),'proceed')]"),
+            (By.CSS_SELECTOR, "button.next, button.btn-next, button[data-action='next']"),
+            (By.CSS_SELECTOR, "a.next, a.btn-next"),
+        ]
+
+        for by, selector in next_selectors:
+            try:
+                elements = self.driver.find_elements(by, selector)
+                for el in elements:
+                    if el.is_displayed() and el.is_enabled():
+                        text = el.text.strip().lower()
+                        if any(skip in text for skip in ["login", "sign in", "back", "previous"]):
+                            continue
+                        self._scroll_into_view(el)
+                        el.click()
+                        print(f"  [>] Clicked next button: '{el.text.strip()[:50]}'")
+                        return True
+            except Exception:
+                continue
+
+        return False

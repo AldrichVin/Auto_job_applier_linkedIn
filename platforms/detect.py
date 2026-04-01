@@ -20,6 +20,9 @@ PLATFORM_PATTERNS: list[tuple[str, str, str]] = [
     ("jobs.lever.co", "platforms.lever", "LeverHandler"),
     ("lever.co/apply", "platforms.lever", "LeverHandler"),
     ("jobs.smartrecruiters.com", "platforms.smartrecruiters", "SmartRecruitersHandler"),
+    ("michaelpage.com", "platforms.michaelpage", "MichaelPageHandler"),
+    ("pagepersonnel.com", "platforms.michaelpage", "MichaelPageHandler"),
+    ("jobs.dayforcehcm.com", "platforms.dayforce", "DayforceHandler"),
 ]
 
 

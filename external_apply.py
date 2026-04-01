@@ -119,6 +119,22 @@ def build_user_data() -> dict:
         "education_degree": "Bachelor of Computer Science",
         "education_university": "Monash University",
         "github": "https://github.com/AldrichVin",
+        "postcode": "3006",
+        "aboriginal_or_tsi": "No",
+        "industry": "Retail",
+        "sub_industry": "Fashion / Apparel",
+        "department": "Analytics",
+        "role_category": "Data Analyst",
+        "current_job_title": "Data Analyst Intern",
+        "experience_level": "Entry Level",
+        "preferred_job_type": "Permanent, but open to contract roles",
+        "notice_period_label": "Immediately Available",
+        "current_salary": "60000",
+        "salary_currency": "AUD",
+        "prefix": "Mr",
+        "address_line1": "2704/58 Clarke St, Southbank",
+        "preferred_contact_method": "Email",
+        "referral_source": "LinkedIn",
     }
 
 
