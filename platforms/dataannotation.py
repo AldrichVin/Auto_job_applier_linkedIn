@@ -3,6 +3,7 @@
 import time
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
 from platforms.base import BasePlatformHandler
 
@@ -28,7 +29,7 @@ class DataAnnotationHandler(BasePlatformHandler):
             print("  [!] Could not find 'Continue with Email' button.")
             return "error"
 
-        time.sleep(2)
+        time.sleep(3)
 
         # ── The Typeform is inside an iframe ─────────────────────────
         filled = self._fill_typeform_signup()
@@ -50,97 +51,111 @@ class DataAnnotationHandler(BasePlatformHandler):
 
         try:
             # Step 1: Email
-            if self._fill_typeform_step("email", self.data["email"]):
+            if self._fill_and_advance(self.data.get("login_email", self.data["email"])):
                 filled += 1
+                print("  [+] Filled email.")
 
             # Step 2: First name
-            if self._fill_typeform_step("answer", self.data["first_name"]):
+            if self._fill_and_advance(self.data["first_name"]):
                 filled += 1
+                print("  [+] Filled first name.")
 
             # Step 3: Last name
-            if self._fill_typeform_step("answer", self.data["last_name"]):
+            if self._fill_and_advance(self.data["last_name"]):
                 filled += 1
+                print("  [+] Filled last name.")
 
-            # Step 4: Phone — highlight Submit but don't click
+            # Step 4: Phone — fill but highlight Submit, don't click
+            time.sleep(1)
             phone = self.data.get("phone", "")
-            try:
-                phone_input = self.driver.find_element(
-                    By.CSS_SELECTOR, "input[type='tel'], input[placeholder*='Phone']"
-                )
-                phone_input.clear()
-                phone_input.send_keys(phone)
+            phone_filled = self.driver.execute_script("""
+                const inputs = document.querySelectorAll('input[type="tel"], input[placeholder*="Phone"]');
+                for (const inp of inputs) {
+                    if (inp.offsetParent !== null) {
+                        inp.value = arguments[0];
+                        inp.dispatchEvent(new Event('input', {bubbles: true}));
+                        inp.dispatchEvent(new Event('change', {bubbles: true}));
+                        return true;
+                    }
+                }
+                return false;
+            """, phone)
+            if phone_filled:
                 filled += 1
                 print("  [+] Filled phone number.")
-                time.sleep(1)
 
-                # Highlight the Submit button
-                try:
-                    submit_btn = self.driver.find_element(
-                        By.XPATH, "//button[contains(text(),'Submit')]"
-                    )
-                    self.driver.execute_script(
-                        "arguments[0].style.border = '4px solid red'; "
-                        "arguments[0].style.boxShadow = '0 0 15px red';",
-                        submit_btn,
-                    )
-                    print("  [+] Highlighted Submit button (NOT clicking).")
-                except Exception:
-                    pass
-            except Exception as exc:
-                print(f"  [!] Phone step error: {exc}")
+            # Highlight Submit button
+            self.driver.execute_script("""
+                const buttons = document.querySelectorAll('button');
+                for (const btn of buttons) {
+                    if (btn.textContent.toLowerCase().includes('submit')) {
+                        btn.style.border = '4px solid red';
+                        btn.style.boxShadow = '0 0 15px red';
+                    }
+                }
+            """)
+            print("  [+] Highlighted Submit button (NOT clicking).")
 
         finally:
-            # Switch back to main content
             self.driver.switch_to.default_content()
 
         return filled
 
-    def _fill_typeform_step(self, input_hint: str, value: str) -> bool:
-        """Fill a single Typeform step and click OK/Next."""
+    def _fill_and_advance(self, value: str) -> bool:
+        """Fill the current visible input and press Enter/click OK to advance."""
         try:
-            time.sleep(1)
+            time.sleep(1.5)
 
-            # Find the visible text input
-            inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='email']")
-            target = None
-            for inp in inputs:
-                if inp.is_displayed():
-                    target = inp
-                    break
+            # Fill via JS to handle React inputs
+            filled = self.driver.execute_script("""
+                const inputs = document.querySelectorAll(
+                    'input[type="text"], input[type="email"], input:not([type])'
+                );
+                for (const inp of inputs) {
+                    if (inp.offsetParent !== null && inp.type !== 'hidden') {
+                        // Clear and set value
+                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                            window.HTMLInputElement.prototype, 'value'
+                        ).set;
+                        nativeInputValueSetter.call(inp, arguments[0]);
+                        inp.dispatchEvent(new Event('input', {bubbles: true}));
+                        inp.dispatchEvent(new Event('change', {bubbles: true}));
+                        inp.focus();
+                        return true;
+                    }
+                }
+                return false;
+            """, value)
 
-            if not target:
-                print(f"  [!] No visible input found for step '{input_hint}'.")
+            if not filled:
                 return False
 
-            target.clear()
-            target.send_keys(value)
             time.sleep(0.5)
 
-            # Click OK / Next button
-            ok_clicked = False
-            for xpath in [
-                "//button[contains(text(),'OK')]",
-                "//button[contains(text(),'Next')]",
-            ]:
-                try:
-                    buttons = self.driver.find_elements(By.XPATH, xpath)
-                    for btn in buttons:
-                        if btn.is_displayed():
-                            btn.click()
-                            ok_clicked = True
-                            break
-                except Exception:
-                    continue
-                if ok_clicked:
-                    break
+            # Click the OK/Next button via JS
+            advanced = self.driver.execute_script("""
+                const buttons = document.querySelectorAll('button');
+                for (const btn of buttons) {
+                    const text = btn.textContent.toLowerCase();
+                    if ((text.includes('ok') || text.includes('next')) && btn.offsetParent !== null) {
+                        btn.click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
 
-            if ok_clicked:
-                time.sleep(1.5)
-                return True
+            if not advanced:
+                # Fallback: press Enter on the input
+                inputs = self.driver.find_elements(By.CSS_SELECTOR, "input")
+                for inp in inputs:
+                    if inp.is_displayed():
+                        inp.send_keys(Keys.RETURN)
+                        break
 
-            print(f"  [!] Could not click OK/Next for step '{input_hint}'.")
-            return False
+            time.sleep(1.5)
+            return True
 
         except Exception as exc:
-            print(f"  [!] Typeform step error for '{input_hint}': {exc}")
+            print(f"  [!] Typeform step error: {exc}")
             return False

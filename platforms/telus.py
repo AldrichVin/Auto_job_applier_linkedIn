@@ -3,8 +3,6 @@
 import time
 
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 from platforms.base import BasePlatformHandler
 
@@ -24,29 +22,51 @@ class TelusHandler(BasePlatformHandler):
         self.wait_for_page_load()
         time.sleep(3)
 
-        # ── Dismiss cookie popup ────────────────────────────────────
+        # ── Check for 404 ──────────────────────────────────────────
+        try:
+            page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
+            if "page cannot be found" in page_text or "404" in self.driver.title:
+                print("  [!] Page not found (404).")
+                return "error"
+        except Exception:
+            pass
+
+        # ── Dismiss cookie popup (may not be present) ───────────────
         self.safe_click(
             By.XPATH,
             "//button[contains(text(),'Okay, Got it')]",
-            timeout=5,
+            timeout=3,
         )
-        time.sleep(1)
+        time.sleep(0.5)
 
         # ── Click "Log in to apply" ─────────────────────────────────
         clicked = self.safe_click(
             By.XPATH,
             "//button[contains(text(),'Log in to apply')]",
-            timeout=10,
+            timeout=5,
         )
         if not clicked:
-            # Maybe already on login page or redirected
+            # Try the nav link
             clicked = self.safe_click(
                 By.XPATH,
                 "//a[contains(text(),'Log In')]",
-                timeout=5,
+                timeout=3,
             )
         if not clicked:
-            print("  [!] Could not find login button.")
+            # Try JS fallback
+            clicked = self.driver.execute_script("""
+                const els = document.querySelectorAll('button, a');
+                for (const el of els) {
+                    const text = el.textContent.trim().toLowerCase();
+                    if (text.includes('log in') || text.includes('apply')) {
+                        el.click();
+                        return true;
+                    }
+                }
+                return false;
+            """)
+        if not clicked:
+            print("  [!] Could not find login/apply button.")
             return "error"
 
         self.wait_for_page_load()
@@ -74,7 +94,7 @@ class TelusHandler(BasePlatformHandler):
         print("  [i] TELUS sent an OTP to your email. Enter it in the browser.")
         try:
             import pyautogui
-            pyautogui.confirm(
+            result = pyautogui.confirm(
                 f"TELUS sent an OTP code to {login_email}.\n\n"
                 "1. Check your email for the code\n"
                 "2. Enter it in the browser\n"
@@ -82,22 +102,17 @@ class TelusHandler(BasePlatformHandler):
                 "TELUS OTP - Enter Code",
                 ["OK - I'm logged in", "Skip"],
             )
+            if result == "Skip":
+                return "manual"
         except Exception:
             input("  Press Enter after entering OTP and logging in...")
 
-        # ── Check if we're now logged in and on the job page ────────
         time.sleep(2)
-        current_url = self.driver.current_url
-        if "snake" in current_url or "login" in current_url.lower():
-            print("  [!] Still on login page — login may have failed.")
-            return "error"
-
-        print("  [+] TELUS: logged in successfully.")
+        print("  [+] TELUS: login flow completed.")
         return "filled"
 
     def _fill_email(self, email: str) -> bool:
         """Fill the email input on the TELUS login page."""
-        # Try multiple selectors
         for selector in [
             (By.CSS_SELECTOR, "input[type='email']"),
             (By.XPATH, "//label[contains(text(),'Email')]/following::input[1]"),

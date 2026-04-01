@@ -102,6 +102,30 @@ class GenericHandler(BasePlatformHandler):
             except Exception:
                 continue
 
+        # ── JS fallback: search all buttons/links by textContent ────
+        try:
+            clicked = self.driver.execute_script("""
+                const keywords = ['apply', 'begin', 'start application', 'start new application'];
+                const skipWords = ['login', 'sign in', 'save', 'alert', 'back'];
+                const elements = [...document.querySelectorAll('button, a')];
+                for (const el of elements) {
+                    const text = (el.textContent || el.innerText || '').trim().toLowerCase()
+                        .replace(/_/g, ' ');
+                    if (skipWords.some(s => text.includes(s))) continue;
+                    if (keywords.some(k => text.includes(k))) {
+                        el.scrollIntoView({block: 'center'});
+                        el.click();
+                        return text.substring(0, 50);
+                    }
+                }
+                return null;
+            """)
+            if clicked:
+                print(f"  [+] Clicked apply button via JS: '{clicked}'")
+                return True
+        except Exception:
+            pass
+
         print("  [!] Could not find an Apply button.")
         return False
 
