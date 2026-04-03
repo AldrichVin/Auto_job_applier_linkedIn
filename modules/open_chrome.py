@@ -28,19 +28,36 @@ from selenium.webdriver.support.ui import WebDriverWait
 from modules.helpers import find_default_profile_directory, critical_error_log, print_lg
 from selenium.common.exceptions import SessionNotCreatedException
 
+def _is_profile_locked(profile_dir: str) -> bool:
+    """Check if Chrome profile directory is locked by another process."""
+    import pathlib
+    lock_files = ["SingletonLock", "lockfile", "SingletonSocket"]
+    for lock in lock_files:
+        if (pathlib.Path(profile_dir) / lock).exists():
+            return True
+    return False
+
+
 def createChromeSession(isRetry: bool = False):
     make_directories([file_name,failed_file_name,logs_folder_path+"/screenshots",default_resume_path,generated_resume_path+"/temp"])
     # Set up WebDriver with Chrome Profile
     options = uc.ChromeOptions() if stealth_mode else Options()
     if run_in_background:   options.add_argument("--headless")
     if disable_extensions:  options.add_argument("--disable-extensions")
+    options.add_argument("--remote-debugging-port=0")
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
 
     print_lg("IF YOU HAVE MORE THAN 10 TABS OPENED, PLEASE CLOSE OR BOOKMARK THEM! Or it's highly likely that application will just open browser and not do anything!")
     profile_dir = find_default_profile_directory()
     if isRetry:
         print_lg("Will login with a guest profile, browsing history will not be saved in the browser!")
     elif profile_dir and not safe_mode:
-        options.add_argument(f"--user-data-dir={profile_dir}")
+        if _is_profile_locked(profile_dir):
+            print_lg("Chrome profile is locked by another process. Using temp profile instead.")
+            options.add_argument(f"--user-data-dir={get_default_temp_profile()}")
+        else:
+            options.add_argument(f"--user-data-dir={profile_dir}")
     else:
         print_lg("Logging in with a guest profile, Web history will not be saved!")
         options.add_argument(f"--user-data-dir={get_default_temp_profile()}")
@@ -57,19 +74,28 @@ def createChromeSession(isRetry: bool = False):
     actions = ActionChains(driver)
     return options, driver, actions, wait
 
-try:
-    options, driver, actions, wait = None, None, None, None
-    options, driver, actions, wait = createChromeSession()
-except SessionNotCreatedException as e:
-    critical_error_log("Failed to create Chrome Session, retrying with guest profile", e)
-    options, driver, actions, wait = createChromeSession(True)
-except Exception as e:
-    msg = 'Seems like Google Chrome is out dated. Update browser and try again! \n\n\nIf issue persists, try Safe Mode. Set, safe_mode = True in config.py \n\nPlease check GitHub discussions/support for solutions https://github.com/GodsScion/Auto_job_applier_linkedIn \n                                   OR \nReach out in discord ( https://discord.gg/fFp7uUzWCY )'
-    if isinstance(e,TimeoutError): msg = "Couldn't download Chrome-driver. Set stealth_mode = False in config!"
-    print_lg(msg)
-    critical_error_log("In Opening Chrome", e)
-    from pyautogui import alert
-    alert(msg, "Error in opening chrome")
-    try: driver.quit()
-    except NameError: exit()
+def initialize_chrome():
+    """Initialize Chrome session. Call explicitly instead of at import time."""
+    global options, driver, actions, wait
+    try:
+        options, driver, actions, wait = createChromeSession()
+    except SessionNotCreatedException as e:
+        critical_error_log("Failed to create Chrome Session, retrying with guest profile", e)
+        options, driver, actions, wait = createChromeSession(True)
+    except Exception as e:
+        msg = 'Seems like Google Chrome is out dated. Update browser and try again! \n\n\nIf issue persists, try Safe Mode. Set, safe_mode = True in config.py \n\nPlease check GitHub discussions/support for solutions https://github.com/GodsScion/Auto_job_applier_linkedIn \n                                   OR \nReach out in discord ( https://discord.gg/fFp7uUzWCY )'
+        if isinstance(e,TimeoutError): msg = "Couldn't download Chrome-driver. Set stealth_mode = False in config!"
+        print_lg(msg)
+        critical_error_log("In Opening Chrome", e)
+        from modules.helpers import show_alert
+        show_alert(msg, "Error in opening chrome")
+        try: driver.quit()
+        except NameError: exit()
+
+
+# Module-level variables for backward compatibility
+options, driver, actions, wait = None, None, None, None
+
+# Auto-initialize on import (existing behavior)
+initialize_chrome()
     
