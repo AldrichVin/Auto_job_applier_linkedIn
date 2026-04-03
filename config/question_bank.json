@@ -1,0 +1,124 @@
+{
+  "questions": [
+    {
+      "patterns": ["years?.of.experience", "how.many.years", "total.experience"],
+      "answer": "1",
+      "type": "text"
+    },
+    {
+      "patterns": ["authorized.to.work", "work.authorization", "legally.authorized", "right.to.work", "legally.work", "eligible.to.work"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["require.*sponsor", "visa.*sponsor", "need.*sponsor", "immigration.*sponsor"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["desired.*salary", "salary.*expectation", "expected.*salary", "annual.*salary", "compensation.*expect"],
+      "answer": "70000",
+      "type": "text"
+    },
+    {
+      "patterns": ["notice.*period", "when.*start", "earliest.*start", "available.*start", "start.*date"],
+      "answer": "Immediately Available",
+      "type": "text"
+    },
+    {
+      "patterns": ["gender", "identify.as", "sex"],
+      "answer": "Male",
+      "type": "select"
+    },
+    {
+      "patterns": ["aboriginal", "torres.strait", "first.nations"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["disability", "disabled", "impairment"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["veteran", "military", "armed.forces"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["current.*location", "where.*located", "current.*city"],
+      "answer": "Melbourne, VIC, Australia",
+      "type": "text"
+    },
+    {
+      "patterns": ["willing.*relocate", "open.*relocation"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["18.*years.*old", "over.*18", "above.*18", "legal.*age"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["highest.*education", "education.*level", "degree"],
+      "answer": "Bachelor's Degree",
+      "type": "select"
+    },
+    {
+      "patterns": ["linkedin.*url", "linkedin.*profile"],
+      "answer": "https://www.linkedin.com/in/aldrich-vincent-4463b2355",
+      "type": "text"
+    },
+    {
+      "patterns": ["github.*url", "github.*profile"],
+      "answer": "https://github.com/AldrichVin",
+      "type": "text"
+    },
+    {
+      "patterns": ["website.*url", "portfolio.*url", "personal.*website"],
+      "answer": "https://personal-project-eight-gamma.vercel.app/",
+      "type": "text"
+    },
+    {
+      "patterns": ["ethnicity", "race", "ethnic.*background"],
+      "answer": "Asian",
+      "type": "select"
+    },
+    {
+      "patterns": ["citizenship", "citizen.*of"],
+      "answer": "Non-citizen allowed to work for any employer",
+      "type": "select"
+    },
+    {
+      "patterns": ["how.*hear", "how.*find", "referral.*source", "where.*find.*this"],
+      "answer": "LinkedIn",
+      "type": "text"
+    },
+    {
+      "patterns": ["current.*employer", "current.*company"],
+      "answer": "Veve Clothing",
+      "type": "text"
+    },
+    {
+      "patterns": ["current.*job.*title", "current.*role", "current.*position"],
+      "answer": "Data Analyst Intern",
+      "type": "text"
+    },
+    {
+      "patterns": ["driver.*licen[sc]e", "valid.*licen[sc]e"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["security.*clearance"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["privacy.*policy", "terms.*conditions", "agree.*terms", "consent"],
+      "answer": "Yes",
+      "type": "select"
+    }
+  ]
+}
