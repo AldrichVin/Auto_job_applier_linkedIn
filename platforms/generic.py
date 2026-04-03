@@ -307,58 +307,103 @@ class GenericHandler(BasePlatformHandler):
             return False
 
     def _handle_login_signup(self) -> None:
-        """Attempt to fill login/signup forms with stored credentials."""
+        """Attempt to fill login/signup forms with stored credentials.
+
+        Handles both login (email + password) and full signup
+        (email + password + confirm password + name + terms checkbox).
+        """
         login_email = self.data.get("login_email", self.data["email"])
         login_password = self.data.get("login_password", "")
 
-        # Fill email
-        for selector in [
+        # ── Fill email ─────────────────────────────────────────────
+        email_selectors = [
             (By.CSS_SELECTOR, "input[type='email']"),
             (By.CSS_SELECTOR, "input[name*='email' i]"),
             (By.CSS_SELECTOR, "input[placeholder*='email' i]"),
+            (By.CSS_SELECTOR, "input[id*='email' i]"),
+            (By.CSS_SELECTOR, "input[autocomplete='email']"),
             (By.XPATH, "//label[contains(translate(text(),'EMAIL','email'),'email')]/..//input"),
-        ]:
+        ]
+        email_filled = False
+        for selector in email_selectors:
             try:
                 elements = self.driver.find_elements(selector[0], selector[1])
                 for el in elements:
                     if el.is_displayed():
                         el.clear()
                         el.send_keys(login_email)
-                        print(f"  [+] Filled login email: {login_email}")
+                        if not email_filled:
+                            print(f"  [+] Filled login email: {login_email}")
+                            email_filled = True
                         break
             except Exception:
                 continue
 
-        # Fill password if field exists
+        # ── Fill ALL password fields (password + confirm password) ──
         if login_password:
             try:
                 pw_inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='password']")
+                pw_count = 0
                 for pw in pw_inputs:
                     if pw.is_displayed():
                         pw.clear()
                         pw.send_keys(login_password)
-                        print("  [+] Filled login password.")
-                        break
+                        pw_count += 1
+                if pw_count > 0:
+                    print(f"  [+] Filled {pw_count} password field(s).")
             except Exception:
                 pass
 
-        # Fill first/last name if signup form
+        # ── Fill name fields (for signup forms) ────────────────────
         self._try_fill_input(["first.?name", "fname", "given.?name"], self.data["first_name"])
         self._try_fill_input(["last.?name", "lname", "surname", "family.?name"], self.data["last_name"])
+        self._try_fill_input(["full.?name", "your.?name", "display.?name"], self.data["full_name"])
+        self._try_fill_input(["phone", "mobile", "tel"], self.data["phone"])
+
+        # ── Check terms/consent checkboxes ─────────────────────────
+        try:
+            checkboxes = self.driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+            for cb in checkboxes:
+                if cb.is_displayed() and not cb.is_selected():
+                    # Check if it's a terms/consent checkbox
+                    parent_text = ""
+                    try:
+                        parent = cb.find_element(By.XPATH, "./..")
+                        parent_text = parent.text.lower()
+                    except Exception:
+                        pass
+                    label_for = cb.get_attribute("id")
+                    if label_for:
+                        try:
+                            label = self.driver.find_element(By.CSS_SELECTOR, f"label[for='{label_for}']")
+                            parent_text = label.text.lower()
+                        except Exception:
+                            pass
+                    if any(kw in parent_text for kw in ["agree", "terms", "accept", "consent", "privacy", "condition"]):
+                        cb.click()
+                        print("  [+] Checked terms/consent checkbox.")
+        except Exception:
+            pass
 
         time.sleep(1)
 
-        # Click submit/login/signup/continue button
-        for xpath in [
+        # ── Try clicking "Sign Up" first, then "Sign In", then others ──
+        button_xpaths = [
             "//button[contains(translate(text(),'SIGN','sign'),'sign up')]",
-            "//button[contains(translate(text(),'SIGN','sign'),'sign in')]",
-            "//button[contains(translate(text(),'LOG','log'),'log in')]",
+            "//a[contains(translate(text(),'SIGN','sign'),'sign up')]",
             "//button[contains(translate(text(),'CREATE','create'),'create')]",
+            "//a[contains(translate(text(),'CREATE','create'),'create')]",
             "//button[contains(translate(text(),'REGISTER','register'),'register')]",
+            "//a[contains(translate(text(),'REGISTER','register'),'register')]",
+            "//button[contains(translate(text(),'SIGN','sign'),'sign in')]",
+            "//a[contains(translate(text(),'SIGN','sign'),'sign in')]",
+            "//button[contains(translate(text(),'LOG','log'),'log in')]",
+            "//a[contains(translate(text(),'LOG','log'),'log in')]",
             "//button[contains(translate(text(),'CONTINUE','continue'),'continue')]",
             "//button[contains(translate(text(),'SUBMIT','submit'),'submit')]",
             "//input[@type='submit']",
-        ]:
+        ]
+        for xpath in button_xpaths:
             try:
                 buttons = self.driver.find_elements(By.XPATH, xpath)
                 for btn in buttons:
@@ -366,21 +411,60 @@ class GenericHandler(BasePlatformHandler):
                         btn.click()
                         print(f"  [+] Clicked login/signup button: '{btn.text.strip()[:40]}'")
                         time.sleep(3)
+                        self.wait_for_page_load()
 
                         # Check if OTP/verification is needed
                         page_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
-                        if any(kw in page_text for kw in ["verification code", "otp", "enter the code", "check your email"]):
+                        if any(kw in page_text for kw in ["verification code", "otp", "enter the code", "check your email", "verify your email"]):
                             print("  [i] OTP required — polling for 120s (enter code in browser)...")
-                            for countdown in range(24):  # 24 * 5 = 120 seconds
+                            for countdown in range(24):
                                 time.sleep(5)
                                 if not self._is_login_page():
                                     print("  [+] Login completed!")
                                     break
                             else:
                                 print("  [!] OTP timeout after 120s.")
+
+                        # If still on login page, might need to try Sign In instead
+                        if self._is_login_page():
+                            continue
                         return
             except Exception:
                 continue
+
+    def _try_submit(self) -> bool:
+        """Try to find and click a Submit / Apply button."""
+        skip_words = [
+            "login", "sign in", "back", "cancel", "save", "search",
+            "filter", "reset", "clear", "close", "dismiss", "next",
+            "continue", "previous", "navigate",
+        ]
+        accept_words = ["submit", "apply", "send application", "confirm"]
+
+        submit_selectors = [
+            (By.XPATH, "//button[contains(translate(text(),'SUBMIT','submit'),'submit')]"),
+            (By.CSS_SELECTOR, "button[type='submit']"),
+            (By.CSS_SELECTOR, "button[data-testid='submit'], button[data-testid='submit-button']"),
+            (By.XPATH, "//input[@type='submit']"),
+        ]
+        for by, selector in submit_selectors:
+            try:
+                elements = self.driver.find_elements(by, selector)
+                for el in elements:
+                    if el.is_displayed() and el.is_enabled():
+                        text = el.text.strip().lower()
+                        if any(skip in text for skip in skip_words):
+                            continue
+                        if not any(word in text for word in accept_words) and text:
+                            continue
+                        self._scroll_into_view(el)
+                        time.sleep(1)
+                        el.click()
+                        print(f"  [+] Auto-submitted: '{el.text.strip()[:40]}'")
+                        return True
+            except Exception:
+                continue
+        return False
 
     def _is_job_closed(self) -> bool:
         """Check if the page indicates the job listing is closed or expired."""

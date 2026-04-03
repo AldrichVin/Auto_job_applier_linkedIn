@@ -15,11 +15,18 @@ class IndeedHandler(BasePlatformHandler):
 
     def login(self) -> bool:
         from config.external_secrets import indeed_username, indeed_password
+        from modules.helpers import load_cookies, save_cookies
 
         if not indeed_username or not indeed_password:
             print("  [!] Indeed credentials not set. Set INDEED_USERNAME and INDEED_PASSWORD env vars.")
             print("  [i] Continuing without login.")
             return True
+
+        # Try loading saved cookies first
+        if load_cookies(self.driver, "indeed", "https://www.indeed.com"):
+            if "auth" not in self.driver.current_url.lower():
+                print("  [+] Indeed: logged in via saved cookies.")
+                return True
 
         print("  [>] Indeed: logging in...")
         self.driver.get(self.LOGIN_URL)
@@ -54,6 +61,7 @@ class IndeedHandler(BasePlatformHandler):
                 print("  [!] Indeed login timeout.")
 
         print("  [+] Indeed: login complete.")
+        save_cookies(self.driver, "indeed")
         return True
 
     def apply(self, url: str, job_info: dict) -> str:
@@ -82,6 +90,9 @@ class IndeedHandler(BasePlatformHandler):
             filled_count += fields_on_page
 
             # Check if we're on the final review/submit page
+            # AI fallback for unknown fields on this page
+            self.fill_unknown_fields(job_info)
+
             submit_btn = self._find_submit_button()
             if submit_btn:
                 # We're at the end — highlight and stop

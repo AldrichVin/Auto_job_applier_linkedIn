@@ -90,6 +90,9 @@ class LeverHandler(BasePlatformHandler):
 
         self._fill_custom_questions()
 
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
+
         # ── Highlight submit (DO NOT CLICK) ─────────────────────────
 
         self.highlight_submit_button(

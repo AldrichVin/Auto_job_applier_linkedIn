@@ -171,6 +171,9 @@ class WorkdayHandler(BasePlatformHandler):
             # Fill any new fields on this page
             self._fill_label_questions()
 
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
+
         # ── Highlight submit (DO NOT CLICK) ─────────────────────────
 
         self.highlight_submit_button(

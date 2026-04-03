@@ -39,6 +39,9 @@ class MichaelPageHandler(BasePlatformHandler):
             self.take_screenshot("michaelpage", "error")
             return "error"
 
+        # AI fallback for remaining unknown fields
+        self.fill_unknown_fields(job_info)
+
         # Highlight submit (user clicks manually)
         self.highlight_submit_button(
             By.CSS_SELECTOR,

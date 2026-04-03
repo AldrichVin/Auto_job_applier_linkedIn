@@ -15,11 +15,18 @@ class SeekHandler(BasePlatformHandler):
 
     def login(self) -> bool:
         from config.external_secrets import seek_username, seek_password
+        from modules.helpers import load_cookies, save_cookies
 
         if not seek_username or not seek_password:
             print("  [!] Seek credentials not set. Set SEEK_USERNAME and SEEK_PASSWORD env vars.")
             print("  [i] Continuing without login — forms may require manual auth.")
             return True  # Don't block, just warn
+
+        # Try loading saved cookies first
+        if load_cookies(self.driver, "seek", "https://www.seek.com.au"):
+            if "login" not in self.driver.current_url.lower():
+                print("  [+] Seek: logged in via saved cookies.")
+                return True
 
         print("  [>] Seek: logging in...")
         self.driver.get(self.LOGIN_URL)
@@ -51,6 +58,7 @@ class SeekHandler(BasePlatformHandler):
                 print("  [!] Seek login timeout.")
 
         print("  [+] Seek: login complete.")
+        save_cookies(self.driver, "seek")
         return True
 
     def apply(self, url: str, job_info: dict) -> str:
@@ -117,6 +125,9 @@ class SeekHandler(BasePlatformHandler):
         # ── Custom questions ────────────────────────────────────────
 
         self._fill_seek_questions()
+
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
 
         # ── Highlight submit (DO NOT CLICK) ─────────────────────────
 

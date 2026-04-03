@@ -83,6 +83,9 @@ class DayforceHandler(BasePlatformHandler):
             self.wait_for_page_load()
             time.sleep(2)
 
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
+
         # ── Highlight submit if visible (DO NOT CLICK) ──────────────
         self.highlight_submit_button(
             By.XPATH,

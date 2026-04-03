@@ -70,6 +70,9 @@ class AshbyHandler(BasePlatformHandler):
         # ── Custom fields ──────────────────────────────────────────
         filled_count += self._fill_custom_fields(job_info)
 
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
+
         # ── Highlight submit (user clicks manually) ─────────────────
         if not self.highlight_submit_button(
             By.CSS_SELECTOR,

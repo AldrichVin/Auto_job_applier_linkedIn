@@ -116,6 +116,9 @@ class GreenhouseHandler(BasePlatformHandler):
 
         self._check_consent_boxes()
 
+        # ── AI fallback for remaining unknown fields ────────────────
+        self.fill_unknown_fields(job_info)
+
         # ── Highlight submit button (DO NOT CLICK) ──────────────────
 
         self.highlight_submit_button(

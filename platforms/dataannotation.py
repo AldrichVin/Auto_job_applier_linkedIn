@@ -84,6 +84,9 @@ class DataAnnotationHandler(BasePlatformHandler):
                 filled += 1
                 print("  [+] Filled phone number.")
 
+            # AI fallback for remaining unknown fields
+            self.fill_unknown_fields()
+
             # Highlight Submit button
             self.driver.execute_script("""
                 const buttons = document.querySelectorAll('button');
