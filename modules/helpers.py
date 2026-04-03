@@ -25,11 +25,24 @@ import pathlib
 from time import sleep
 from random import randint
 from datetime import datetime, timedelta
-from pyautogui import alert
+try:
+    from pyautogui import alert as _pyautogui_alert
+except (ImportError, KeyError, Exception):
+    _pyautogui_alert = None
 from pprint import pprint
 
 from config.settings import logs_folder_path
 
+
+def show_alert(message: str, title: str = "Alert", button: str = "OK"):
+    """Show alert dialog with pyautogui, fallback to print if unavailable."""
+    if _pyautogui_alert:
+        try:
+            return _pyautogui_alert(message, title, button)
+        except Exception:
+            pass
+    print(f"[ALERT] {title}: {message}")
+    return button
 
 
 #### Common functions ####
@@ -136,12 +149,16 @@ def print_lg(*msgs: str | dict, end: str = "\n", pretty: bool = False, flush: bo
     '''
     try:
         for message in msgs:
-            pprint(message) if pretty else print(message, end=end, flush=flush)
+            try:
+                pprint(message) if pretty else print(message, end=end, flush=flush)
+            except UnicodeEncodeError:
+                safe_msg = str(message).encode('ascii', errors='replace').decode('ascii')
+                pprint(safe_msg) if pretty else print(safe_msg, end=end, flush=flush)
             with open(__logs_file_path, 'a+', encoding="utf-8") as file:
                 file.write(str(message) + end)
     except Exception as e:
-        trail = f'Skipped saving this message: "{message}" to log.txt!' if from_critical else "We'll try one more time to log..."
-        alert(f"log.txt in {logs_folder_path} is open or is occupied by another program! Please close it! {trail}", "Failed Logging")
+        trail = f'Skipped saving this message to log.txt!' if from_critical else "We'll try one more time to log..."
+        show_alert(f"log.txt in {logs_folder_path} is open or is occupied by another program! Please close it! {trail}", "Failed Logging")
         if not from_critical:
             critical_error_log("Log.txt is open or is occupied by another program!", e)
 #>
@@ -172,7 +189,6 @@ def manual_login_retry(is_logged_in: callable, limit: int = 2) -> None:
     '''
     count = 0
     while not is_logged_in():
-        from pyautogui import alert
         print_lg("Seems like you're not logged in!")
         button = "Confirm Login"
         message = 'After you successfully Log In, please click "{}" button below.'.format(button)
@@ -180,7 +196,7 @@ def manual_login_retry(is_logged_in: callable, limit: int = 2) -> None:
             button = "Skip Confirmation"
             message = 'If you\'re seeing this message even after you logged in, Click "{}". Seems like auto login confirmation failed!'.format(button)
         count += 1
-        if alert(message, "Login Required", button) and count > limit: return
+        if show_alert(message, "Login Required", button) and count > limit: return
 
 
 
@@ -284,3 +300,100 @@ def truncate_for_csv(data, max_length: int = 131000, suffix: str = "...[TRUNCATE
         return truncated
     except Exception as e:
         return f"[ERROR CONVERTING DATA: {e}]"
+
+
+# ── Cookie Persistence ─────────────────────────────────────────────────
+import re as _re
+import logging as _logging
+
+COOKIE_DIR = pathlib.Path(".auth")
+
+
+def save_cookies(driver, platform: str) -> None:
+    """Save browser cookies for a platform to disk."""
+    COOKIE_DIR.mkdir(exist_ok=True)
+    cookies = driver.get_cookies()
+    cookie_file = COOKIE_DIR / f"{platform}_cookies.json"
+    with open(cookie_file, "w", encoding="utf-8") as f:
+        json.dump(cookies, f, indent=2)
+    print_lg(f"  [+] Cookies saved for {platform} ({len(cookies)} cookies)")
+
+
+def load_cookies(driver, platform: str, domain: str) -> bool:
+    """Load saved cookies for a platform. Returns True if cookies were loaded."""
+    cookie_file = COOKIE_DIR / f"{platform}_cookies.json"
+    if not cookie_file.exists():
+        return False
+    try:
+        with open(cookie_file, "r", encoding="utf-8") as f:
+            cookies = json.load(f)
+        driver.get(domain)
+        for cookie in cookies:
+            cookie.pop("sameSite", None)
+            try:
+                driver.add_cookie(cookie)
+            except Exception:
+                pass
+        driver.refresh()
+        print_lg(f"  [+] Cookies loaded for {platform} ({len(cookies)} cookies)")
+        return True
+    except Exception as exc:
+        print_lg(f"  [!] Cookie load failed for {platform}: {exc}")
+        return False
+
+
+# ── Question Bank ──────────────────────────────────────────────────────
+
+class QuestionBank:
+    """Regex-pattern matched Q&A bank for common screening questions."""
+
+    def __init__(self, json_path: str = "config/question_bank.json"):
+        self.entries: list[dict] = []
+        self._load(json_path)
+
+    def _load(self, path: str) -> None:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for entry in data.get("questions", []):
+                compiled = [_re.compile(p, _re.IGNORECASE) for p in entry.get("patterns", [])]
+                self.entries.append({
+                    "compiled_patterns": compiled,
+                    "answer": entry["answer"],
+                    "type": entry.get("type", "text"),
+                })
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            print_lg(f"  [!] Question bank load error: {exc}")
+
+    def match(self, question_text: str) -> str | None:
+        """Return answer if question matches any pattern, else None."""
+        text = question_text.strip().lower()
+        for entry in self.entries:
+            for pattern in entry["compiled_patterns"]:
+                if pattern.search(text):
+                    return entry["answer"]
+        return None
+
+
+# ── Structured Logging ─────────────────────────────────────────────────
+
+_structured_logger = _logging.getLogger("autoapply")
+try:
+    _structured_handler = _logging.FileHandler(
+        logs_folder_path.rstrip("/") + "/structured.log", encoding="utf-8"
+    )
+    _structured_handler.setFormatter(_logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(message)s"
+    ))
+    _structured_logger.addHandler(_structured_handler)
+    _structured_logger.setLevel(_logging.DEBUG)
+except Exception:
+    pass
+
+
+def log_structured(message: str, level: str = "INFO") -> None:
+    """Write to structured log file with timestamp and level."""
+    log_level = getattr(_logging, level.upper(), _logging.INFO)
+    _structured_logger.log(log_level, str(message))
