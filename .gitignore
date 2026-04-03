@@ -17,3 +17,6 @@ config/questions.py
 config/search.py
 config/settings.py
 config/external_secrets.py
+
+# Cookie persistence (auth tokens)
+.auth/
