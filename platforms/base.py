@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import random
 import re
+import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +50,7 @@ class BasePlatformHandler(ABC):
         user_data: dict,
         ai_client: "OpenAI | None" = None,
         ai_cache: dict | None = None,
+        question_bank=None,
     ):
         self.driver = driver
         self.wait = wait
@@ -54,6 +58,8 @@ class BasePlatformHandler(ABC):
         self.data = user_data
         self.ai_client = ai_client
         self.ai_cache = ai_cache if ai_cache is not None else {}
+        self.question_bank = question_bank
+        self.field_status: list[dict] = []
 
     @abstractmethod
     def apply(self, url: str, job_info: dict) -> str:
@@ -76,43 +82,75 @@ class BasePlatformHandler(ABC):
         value: str,
         clear_first: bool = True,
         timeout: int = 5,
+        max_retries: int = 3,
     ) -> bool:
-        """Find an input element and type a value. Returns True on success."""
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((by, locator))
-            )
-            self._scroll_into_view(element)
-            if clear_first:
-                element.clear()
-            element.send_keys(value)
-            return True
-        except (NoSuchElementException, TimeoutException, ElementNotInteractableException) as exc:
-            print(f"  [!] Could not fill '{locator}': {exc.__class__.__name__}")
-            return False
+        """Find an input element and type a value with retry + verification."""
+        for attempt in range(max_retries):
+            try:
+                element = WebDriverWait(self.driver, timeout).until(
+                    EC.presence_of_element_located((by, locator))
+                )
+                self._scroll_into_view(element)
+                if clear_first:
+                    element.clear()
+                element.send_keys(value)
+
+                # Verify the field received the value
+                actual = element.get_attribute("value") or ""
+                if value.strip() and value not in actual:
+                    # JS fallback for React forms that swallow keystrokes
+                    self.driver.execute_script(
+                        "arguments[0].value = arguments[1];"
+                        "arguments[0].dispatchEvent(new Event('input', {bubbles:true}));"
+                        "arguments[0].dispatchEvent(new Event('change', {bubbles:true}));",
+                        element, value,
+                    )
+
+                self.field_status.append({"field": locator, "status": "filled", "value_preview": value[:30]})
+                return True
+            except StaleElementReferenceException:
+                delay = 0.5 * (2 ** attempt) + random.uniform(0, 0.3)
+                time.sleep(delay)
+                continue
+            except (NoSuchElementException, TimeoutException, ElementNotInteractableException) as exc:
+                self.field_status.append({"field": locator, "status": "failed", "value_preview": exc.__class__.__name__})
+                print(f"  [!] Could not fill '{locator}': {exc.__class__.__name__}")
+                return False
+        self.field_status.append({"field": locator, "status": "failed", "value_preview": "StaleElement after retries"})
+        print(f"  [!] Could not fill '{locator}': StaleElementReferenceException after {max_retries} retries")
+        return False
 
     def safe_select(
-        self, by: str, locator: str, value: str, timeout: int = 5
+        self, by: str, locator: str, value: str, timeout: int = 5, max_retries: int = 3,
     ) -> bool:
         """Find a <select> element and choose an option by visible text."""
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.presence_of_element_located((by, locator))
-            )
-            select = Select(element)
+        for attempt in range(max_retries):
             try:
-                select.select_by_visible_text(value)
-            except NoSuchElementException:
-                # Try partial match
-                for option in select.options:
-                    if value.lower() in option.text.lower():
-                        select.select_by_visible_text(option.text)
-                        return True
+                element = WebDriverWait(self.driver, timeout).until(
+                    EC.presence_of_element_located((by, locator))
+                )
+                select = Select(element)
+                try:
+                    select.select_by_visible_text(value)
+                except NoSuchElementException:
+                    for option in select.options:
+                        if value.lower() in option.text.lower():
+                            select.select_by_visible_text(option.text)
+                            self.field_status.append({"field": locator, "status": "filled", "value_preview": value[:30]})
+                            return True
+                    self.field_status.append({"field": locator, "status": "failed", "value_preview": f"No match: {value[:20]}"})
+                    return False
+                self.field_status.append({"field": locator, "status": "filled", "value_preview": value[:30]})
+                return True
+            except StaleElementReferenceException:
+                delay = 0.5 * (2 ** attempt) + random.uniform(0, 0.3)
+                time.sleep(delay)
+                continue
+            except (NoSuchElementException, TimeoutException) as exc:
+                self.field_status.append({"field": locator, "status": "failed", "value_preview": exc.__class__.__name__})
+                print(f"  [!] Could not select '{locator}': {exc.__class__.__name__}")
                 return False
-            return True
-        except (NoSuchElementException, TimeoutException) as exc:
-            print(f"  [!] Could not select '{locator}': {exc.__class__.__name__}")
-            return False
+        return False
 
     def safe_upload(
         self, by: str, locator: str, file_path: str, timeout: int = 5
@@ -128,18 +166,24 @@ class BasePlatformHandler(ABC):
             print(f"  [!] Could not upload to '{locator}': {exc.__class__.__name__}")
             return False
 
-    def safe_click(self, by: str, locator: str, timeout: int = 5) -> bool:
-        """Find and click an element."""
-        try:
-            element = WebDriverWait(self.driver, timeout).until(
-                EC.element_to_be_clickable((by, locator))
-            )
-            self._scroll_into_view(element)
-            element.click()
-            return True
-        except (NoSuchElementException, TimeoutException, ElementNotInteractableException) as exc:
-            print(f"  [!] Could not click '{locator}': {exc.__class__.__name__}")
-            return False
+    def safe_click(self, by: str, locator: str, timeout: int = 5, max_retries: int = 3) -> bool:
+        """Find and click an element with retry on stale references."""
+        for attempt in range(max_retries):
+            try:
+                element = WebDriverWait(self.driver, timeout).until(
+                    EC.element_to_be_clickable((by, locator))
+                )
+                self._scroll_into_view(element)
+                element.click()
+                return True
+            except StaleElementReferenceException:
+                delay = 0.5 * (2 ** attempt) + random.uniform(0, 0.3)
+                time.sleep(delay)
+                continue
+            except (NoSuchElementException, TimeoutException, ElementNotInteractableException) as exc:
+                print(f"  [!] Could not click '{locator}': {exc.__class__.__name__}")
+                return False
+        return False
 
     def fill_text_area(
         self, by: str, locator: str, text: str, timeout: int = 5
@@ -164,6 +208,8 @@ class BasePlatformHandler(ABC):
         filepath = SCREENSHOT_DIR / filename
         self.driver.save_screenshot(str(filepath))
         print(f"  [+] Screenshot saved: {filepath}")
+        if self.field_status:
+            print(f"  [i] {self.get_field_summary().splitlines()[0]}")
         return str(filepath)
 
     def wait_for_page_load(self, timeout: int = 15):
@@ -171,6 +217,36 @@ class BasePlatformHandler(ABC):
         WebDriverWait(self.driver, timeout).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
+
+    def wait_for_element(self, by: str, locator: str, condition: str = "clickable", timeout: int = 10):
+        """Wait for element with configurable condition. Returns element or None."""
+        try:
+            if condition == "clickable":
+                return WebDriverWait(self.driver, timeout).until(
+                    EC.element_to_be_clickable((by, locator))
+                )
+            elif condition == "visible":
+                return WebDriverWait(self.driver, timeout).until(
+                    EC.visibility_of_element_located((by, locator))
+                )
+            else:
+                return WebDriverWait(self.driver, timeout).until(
+                    EC.presence_of_element_located((by, locator))
+                )
+        except (TimeoutException, NoSuchElementException):
+            return None
+
+    def get_field_summary(self) -> str:
+        """Return formatted summary of all field fill results."""
+        if not self.field_status:
+            return "No fields tracked."
+        filled = sum(1 for f in self.field_status if f["status"] == "filled")
+        failed = sum(1 for f in self.field_status if f["status"] == "failed")
+        lines = [f"Fields: {filled} filled, {failed} failed"]
+        for f in self.field_status:
+            icon = "+" if f["status"] == "filled" else "!"
+            lines.append(f"  [{icon}] {f['field']}: {f['value_preview']}")
+        return "\n".join(lines)
 
     def highlight_submit_button(self, by: str, locator: str, timeout: int = 5) -> bool:
         """Find the submit button and highlight it visually (does NOT click)."""
@@ -207,12 +283,22 @@ class BasePlatformHandler(ABC):
         question_type: str = "text",
         job_info: dict | None = None,
     ) -> str | None:
-        """Use AI to answer a form question. Returns answer or None."""
+        """Use question bank, cache, then AI to answer a form question."""
+        # 1. Check question bank first (instant, deterministic, free)
+        if self.question_bank:
+            bank_answer = self.question_bank.match(question_text)
+            if bank_answer:
+                print(f"  [QB] Matched '{question_text[:40]}' -> '{bank_answer}'")
+                return bank_answer
+
+        # 2. Check AI cache
         cache_key = question_text.strip().lower()
         if cache_key in self.ai_cache:
             return self.ai_cache[cache_key]
 
+        # 3. Call AI
         if not self.ai_client:
+            self._log_unknown_question(question_text, options, question_type)
             return None
 
         try:
@@ -232,7 +318,26 @@ class BasePlatformHandler(ABC):
             return answer
         except Exception as exc:
             print(f"  [!] AI answer error for '{question_text[:50]}': {exc}")
+            self._log_unknown_question(question_text, options, question_type)
             return None
+
+    def _log_unknown_question(self, question: str, options: list | None, q_type: str) -> None:
+        """Log unanswered questions to file for user review."""
+        unknown_file = Path("logs/unknown_questions.json")
+        try:
+            existing = []
+            if unknown_file.exists():
+                with open(unknown_file, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            entry = {"question": question.strip(), "type": q_type, "options": options}
+            # Avoid duplicates
+            if not any(e["question"].lower() == entry["question"].lower() for e in existing):
+                existing.append(entry)
+                unknown_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(unknown_file, "w", encoding="utf-8") as f:
+                    json.dump(existing, f, indent=2)
+        except Exception:
+            pass
 
     def _build_user_info_string(self) -> str:
         """Format user data into a resume-like string for AI context."""
