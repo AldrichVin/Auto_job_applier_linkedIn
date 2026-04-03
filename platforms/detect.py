@@ -23,6 +23,7 @@ PLATFORM_PATTERNS: list[tuple[str, str, str]] = [
     ("michaelpage.com", "platforms.michaelpage", "MichaelPageHandler"),
     ("pagepersonnel.com", "platforms.michaelpage", "MichaelPageHandler"),
     ("jobs.dayforcehcm.com", "platforms.dayforce", "DayforceHandler"),
+    ("jobs.ashbyhq.com", "platforms.ashby", "AshbyHandler"),
     ("app.dataannotation.tech", "platforms.dataannotation", "DataAnnotationHandler"),
     ("telusinternational.ai", "platforms.telus", "TelusHandler"),
     ("jobs.telusdigital.com", "platforms.telus", "TelusHandler"),
@@ -46,6 +47,7 @@ def detect_platform(
     user_data: dict,
     ai_client=None,
     ai_cache: dict | None = None,
+    question_bank=None,
 ) -> "BasePlatformHandler":
     """Detect which platform a URL belongs to and return the appropriate handler."""
     import importlib
@@ -56,11 +58,11 @@ def detect_platform(
             try:
                 module = importlib.import_module(module_name)
                 handler_class = getattr(module, class_name)
-                return handler_class(driver, wait, actions, user_data, ai_client, ai_cache)
+                return handler_class(driver, wait, actions, user_data, ai_client, ai_cache, question_bank)
             except (ImportError, AttributeError) as exc:
                 print(f"  [!] Handler {class_name} not yet implemented: {exc}")
                 break
 
     # Fallback to generic handler
     from platforms.generic import GenericHandler
-    return GenericHandler(driver, wait, actions, user_data, ai_client, ai_cache)
+    return GenericHandler(driver, wait, actions, user_data, ai_client, ai_cache, question_bank)
