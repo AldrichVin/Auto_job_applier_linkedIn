@@ -14,10 +14,18 @@ Usage:
 
 import argparse
 import csv
+import io
 import json
 import sys
+import time as _time
 from datetime import datetime
 from pathlib import Path
+
+# Fix Windows encoding crashes on Unicode characters
+if sys.stdout and hasattr(sys.stdout, 'buffer'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr and hasattr(sys.stderr, 'buffer'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from config.personals import (
     first_name, middle_name, last_name,
@@ -33,42 +41,45 @@ from config.questions import (
 from platforms.detect import detect_platform, detect_platform_name
 
 def _create_chrome_session():
-    """Create a clean Chrome session independent of the LinkedIn bot."""
+    """Create a clean Chrome session with exponential backoff retry."""
+    import time as _time
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
     from selenium.webdriver.common.action_chains import ActionChains
     from selenium.webdriver.support.ui import WebDriverWait
 
-    options = Options()
-    options.add_argument("--disable-extensions")
-    options.add_argument("--start-maximized")
-    # Use a temp profile to avoid conflicts with existing Chrome sessions
-    temp_profile = Path.home() / ".external_apply_chrome_profile"
-    options.add_argument(f"--user-data-dir={temp_profile}")
+    configs = [
+        {"profile": str(Path.home() / ".external_apply_chrome_profile"), "label": "temp profile"},
+        {"profile": None, "label": "guest profile"},
+    ]
 
-    try:
-        driver = webdriver.Chrome(options=options)
-        driver.maximize_window()
-        wait = WebDriverWait(driver, 10)
-        actions = ActionChains(driver)
-        print("[+] Chrome session created.")
-        return driver, wait, actions
-    except Exception as exc:
-        print(f"[!] Chrome error: {exc}")
-        # Retry without custom profile
-        try:
-            options2 = Options()
-            options2.add_argument("--disable-extensions")
-            options2.add_argument("--start-maximized")
-            driver = webdriver.Chrome(options=options2)
-            driver.maximize_window()
-            wait = WebDriverWait(driver, 10)
-            actions = ActionChains(driver)
-            print("[+] Chrome session created (guest profile).")
-            return driver, wait, actions
-        except Exception as exc2:
-            print(f"[!] Chrome retry failed: {exc2}")
-            return None, None, None
+    for config in configs:
+        for attempt in range(3):
+            try:
+                options = Options()
+                options.add_argument("--disable-extensions")
+                options.add_argument("--start-maximized")
+                options.add_argument("--remote-debugging-port=0")
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                if config["profile"]:
+                    options.add_argument(f"--user-data-dir={config['profile']}")
+
+                driver = webdriver.Chrome(options=options)
+                driver.maximize_window()
+                wait = WebDriverWait(driver, 10)
+                actions = ActionChains(driver)
+                print(f"[+] Chrome session created ({config['label']}).")
+                return driver, wait, actions
+            except Exception as exc:
+                delay = 2 * (2 ** attempt)
+                print(f"[!] Chrome attempt {attempt + 1} failed ({config['label']}): {exc}")
+                if attempt < 2:
+                    print(f"    Retrying in {delay}s...")
+                    _time.sleep(delay)
+
+    print("[!] All Chrome session attempts failed.")
+    return None, None, None
 
 
 # ── Constants ───────────────────────────────────────────────────────────
@@ -351,6 +362,11 @@ def main():
 
     # Track stats
     stats = {"filled": 0, "error": 0, "skipped": 0, "manual": 0}
+    platform_stats: dict[str, dict] = {}  # Per-platform breakdown
+
+    # Initialize question bank
+    from modules.helpers import QuestionBank
+    question_bank = QuestionBank("config/question_bank.json")
 
     # Login to platforms that require it
     logged_in_platforms: set[str] = set()
@@ -367,7 +383,7 @@ def main():
             print(f"  Platform: {platform_name}")
             print(f"  URL: {url[:100]}")
 
-            handler = detect_platform(url, driver, wait, actions, user_data, ai_client, ai_cache)
+            handler = detect_platform(url, driver, wait, actions, user_data, ai_client, ai_cache, question_bank)
 
             # Login once per platform
             if platform_name not in logged_in_platforms and platform_name not in ("generic",):
@@ -418,6 +434,20 @@ def main():
                     pass
 
             stats[status] = stats.get(status, 0) + 1
+
+            # Per-platform tracking
+            if platform_name not in platform_stats:
+                platform_stats[platform_name] = {"filled": 0, "error": 0, "skipped": 0, "manual": 0}
+            platform_stats[platform_name][status] = platform_stats[platform_name].get(status, 0) + 1
+
+            # Periodic AI cache save (every 5 jobs)
+            if ai_cache and i % 5 == 0:
+                try:
+                    ai_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(ai_cache_path, "w", encoding="utf-8") as f:
+                        json.dump(ai_cache, f, indent=2)
+                except Exception:
+                    pass
 
             # Save tracking record
             save_tracking_record(TRACKING_CSV, {
@@ -484,7 +514,28 @@ def main():
         print(f"  Skipped:          {stats['skipped']}")
         total = sum(stats.values())
         print(f"  Total processed:  {total}")
+
+        # Per-platform breakdown
+        if platform_stats:
+            print("\n  --- Per-Platform Breakdown ---")
+            print(f"  {'Platform':<20} {'Filled':>7} {'Error':>7} {'Manual':>7} {'Skipped':>7}")
+            for plat, pstats in sorted(platform_stats.items()):
+                print(f"  {plat:<20} {pstats.get('filled',0):>7} {pstats.get('error',0):>7} {pstats.get('manual',0):>7} {pstats.get('skipped',0):>7}")
+
         print(f"\nTracking saved to: {TRACKING_CSV}")
+
+        # Save run summary
+        try:
+            summary_path = Path(f"logs/run_summary_{datetime.now().strftime('%Y-%m-%d_%H.%M.%S')}.txt")
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write(f"Run: {datetime.now().isoformat()}\n")
+                f.write(f"Filled: {stats['filled']}, Error: {stats['error']}, Manual: {stats['manual']}, Skipped: {stats['skipped']}\n")
+                for plat, pstats in sorted(platform_stats.items()):
+                    f.write(f"  {plat}: {pstats}\n")
+            print(f"Run summary saved to: {summary_path}")
+        except Exception:
+            pass
 
         # Wait for user to review before closing browser
         if driver and not args.auto:
