@@ -79,6 +79,7 @@ external_jobs_count = 0
 failed_count = 0
 skip_count = 0
 dailyEasyApplyLimitReached = False
+dailyCapReached = False
 
 re_experience = re.compile(r'[(]?\s*(\d+)\s*[)]?\s*[-to]*\s*\d*[+]*\s*year[s]?', re.IGNORECASE)
 
@@ -1046,7 +1047,21 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 wait_span_click(driver, "Review", 1, scrollTop=True)
                                 cur_pause_before_submit = pause_before_submit
                                 if errored != "stuck" and cur_pause_before_submit:
-                                    decision = pyautogui.confirm('1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', "Confirm your information",["Disable Pause", "Discard Application", "Submit Application"])
+                                    total_so_far = easy_applied_count + external_jobs_count + 1
+                                    cap_info = f" of {daily_application_cap}" if daily_application_cap > 0 else ""
+                                    review_info = (
+                                        f"Application #{total_so_far}{cap_info}\n\n"
+                                        f"Title: {title}\n"
+                                        f"Company: {company}\n"
+                                        f"Location: {work_location} ({work_style})\n"
+                                        f"Experience Required: {experience_required}\n"
+                                        f"Date Posted: {date_listed}\n\n"
+                                        f"1. Please verify your information.\n"
+                                        f"2. If you edited something, return to this screen.\n"
+                                        f"3. DO NOT click 'Submit Application' yourself.\n\n"
+                                        f"To TEMPORARILY disable pausing, click 'Disable Pause'"
+                                    )
+                                    decision = pyautogui.confirm(review_info, f"Review Application #{total_so_far}", ["Disable Pause", "Discard Application", "Submit Application"])
                                     if decision == "Discard Application": raise Exception("Job application discarded by user!")
                                     pause_before_submit = False if "Disable Pause" == decision else True
                                     # try_xp(modal, ".//span[normalize-space(.)='Review']")
@@ -1089,6 +1104,13 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     else:   external_jobs_count += 1
                     applied_jobs.add(job_id)
 
+                    # Check daily application cap
+                    total_applied = easy_applied_count + external_jobs_count
+                    if daily_application_cap > 0 and total_applied >= daily_application_cap:
+                        print_lg(f"\n###############  Daily cap of {daily_application_cap} reached! ({total_applied} applications)  ###############\n")
+                        global dailyCapReached
+                        dailyCapReached = True
+                        return
 
 
                 # Switching to next page
@@ -1116,7 +1138,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
 
         
 def run(total_runs: int) -> int:
-    if dailyEasyApplyLimitReached:
+    if dailyEasyApplyLimitReached or dailyCapReached:
         return total_runs
     print_lg("\n########################################################################################################################\n")
     print_lg(f"Date and Time: {datetime.now()}")
@@ -1198,7 +1220,7 @@ def main() -> None:
                 total_runs = run(total_runs)
                 sort_by = "Most recent" if sort_by == "Most relevant" else "Most relevant"
             total_runs = run(total_runs)
-            if dailyEasyApplyLimitReached:
+            if dailyEasyApplyLimitReached or dailyCapReached:
                 break
         
 
