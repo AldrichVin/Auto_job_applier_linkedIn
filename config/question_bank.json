@@ -119,6 +119,81 @@
       "patterns": ["privacy.*policy", "terms.*conditions", "agree.*terms", "consent"],
       "answer": "Yes",
       "type": "select"
+    },
+    {
+      "patterns": ["working.with.children", "wwcc", "children.check"],
+      "answer": "No",
+      "type": "select"
+    },
+    {
+      "patterns": ["police.check", "background.check", "criminal.record", "criminal.history"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["proficien.*python", "python.*proficien", "python.*experience", "experience.*python"],
+      "answer": "3",
+      "type": "text"
+    },
+    {
+      "patterns": ["proficien.*sql", "sql.*proficien", "sql.*experience", "experience.*sql"],
+      "answer": "2",
+      "type": "text"
+    },
+    {
+      "patterns": ["proficien.*excel", "excel.*proficien", "excel.*experience", "experience.*excel"],
+      "answer": "3",
+      "type": "text"
+    },
+    {
+      "patterns": ["proficien.*power.bi", "power.bi.*proficien", "power.bi.*experience", "experience.*power.bi"],
+      "answer": "2",
+      "type": "text"
+    },
+    {
+      "patterns": ["proficien.*tableau", "tableau.*proficien", "tableau.*experience", "experience.*tableau"],
+      "answer": "1",
+      "type": "text"
+    },
+    {
+      "patterns": ["proficien.*r\\b", "\\br\\b.*proficien", "experience.*\\br\\b.*program"],
+      "answer": "2",
+      "type": "text"
+    },
+    {
+      "patterns": ["remote.*work", "work.*from.*home", "hybrid.*work", "wfh"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["willing.*travel", "travel.*required", "travel.*percent"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["shift.*work", "weekend.*work", "overtime"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["language.*proficien", "english.*proficien", "speak.*english", "english.*level"],
+      "answer": "Native/Bilingual",
+      "type": "select"
+    },
+    {
+      "patterns": ["provide.*reference", "referee", "references.*available"],
+      "answer": "Yes",
+      "type": "select"
+    },
+    {
+      "patterns": ["australian.business.number", "abn"],
+      "answer": "N/A",
+      "type": "text"
+    },
+    {
+      "patterns": ["preferred.*pronoun", "pronoun"],
+      "answer": "He/Him",
+      "type": "select"
     }
   ]
 }
